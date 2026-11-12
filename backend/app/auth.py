@@ -60,7 +60,8 @@ async def current_user(
         data = _serializer(settings).loads(token, max_age=settings.session_days * 86400)
     except (BadSignature, SignatureExpired):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
-    user = await session.get(User, data.get("uid")) if isinstance(data, dict) else None
+    uid = data.get("uid") if isinstance(data, dict) else None  # old single-user cookies have no uid
+    user = await session.get(User, uid) if isinstance(uid, int) else None
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found")
     return user

@@ -9,6 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false, // registered in main.tsx so updates reload the page
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'JobHunter',
@@ -28,6 +29,9 @@ export default defineConfig({
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api/],
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             // Show the last loaded data when offline
