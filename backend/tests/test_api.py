@@ -4,7 +4,7 @@ from app.services.importer import ParsedJob
 
 async def test_requires_login(client):
     assert (await client.get("/api/jobs")).status_code == 401
-    assert (await client.post("/api/auth/login", json={"password": "nope"})).status_code == 401
+    assert (await client.get("/api/stats")).status_code == 401
 
 
 async def test_create_and_track_job(authed):

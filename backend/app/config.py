@@ -8,8 +8,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://jobhunter:jobhunter@localhost:5433/jobhunter"
     redis_url: str = "redis://localhost:6380/0"
-    app_password: str = "change-me"
     secret_key: str = "dev-secret-change-me"
+    # OAuth client ID from Google Cloud Console (empty = Google sign-in hidden)
+    google_client_id: str = ""
+    signup_enabled: bool = True
     cookie_secure: bool = False
     session_days: int = 30
 

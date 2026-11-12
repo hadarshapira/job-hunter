@@ -12,6 +12,10 @@ dependencies = [
     "httpx>=0.28",
     "selectolax>=1.0",
     "itsdangerous>=2.2",
+    "argon2-cffi>=23.1",
+    "email-validator>=2.2",
+    "google-auth>=2.36",
+    "requests>=2.32",
 ]
 
 [project.optional-dependencies]

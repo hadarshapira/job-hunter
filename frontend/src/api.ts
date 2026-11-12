@@ -79,9 +79,24 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const json = (body: unknown) => JSON.stringify(body)
 
+export interface User {
+  id: number
+  email: string
+  name: string
+  picture: string | null
+  has_password: boolean
+  google_linked: boolean
+}
+
+export interface AuthConfig { google_client_id: string | null; signup_enabled: boolean }
+
 export const api = {
-  me: () => req<{ user: string }>('/auth/me'),
-  login: (password: string) => req('/auth/login', { method: 'POST', body: json({ password }) }),
+  me: () => req<User>('/auth/me'),
+  authConfig: () => req<AuthConfig>('/auth/config'),
+  login: (email: string, password: string) => req<User>('/auth/login', { method: 'POST', body: json({ email, password }) }),
+  signup: (email: string, password: string, name: string) =>
+    req<User>('/auth/signup', { method: 'POST', body: json({ email, password, name }) }),
+  google: (credential: string) => req<User>('/auth/google', { method: 'POST', body: json({ credential }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
   jobs: (params: { status?: Status[]; q?: string } = {}) => {
     const sp = new URLSearchParams()

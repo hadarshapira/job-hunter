@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -30,10 +30,25 @@ class WorkMode(StrEnum):
     unknown = "unknown"
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)  # stored lowercased
+    name: Mapped[str] = mapped_column(String(200), default="")
+    picture: Mapped[str | None] = mapped_column(Text)
+    password_hash: Mapped[str | None] = mapped_column(String(255))  # None = Google-only account
+    google_sub: Mapped[str | None] = mapped_column(String(64), unique=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     source: Mapped[str] = mapped_column(String(40), default="manual")
     external_id: Mapped[str | None] = mapped_column(String(255))
     url: Mapped[str | None] = mapped_column(Text)

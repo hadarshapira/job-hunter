@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { api, STATUSES } from '../api'
+import { api, STATUSES, type User } from '../api'
 import { Empty, PageTitle } from '../components'
 
-export default function StatsPage({ onLogout }: { onLogout: () => void }) {
+export default function StatsPage({ user, onLogout }: { user: User; onLogout: () => void }) {
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
   if (stats.isPending) return <Empty>Loading…</Empty>
   if (stats.isError) return <Empty>Error: {stats.error.message}</Empty>
@@ -20,6 +20,7 @@ export default function StatsPage({ onLogout }: { onLogout: () => void }) {
   return (
     <>
       <PageTitle right={<button onClick={onLogout} className="btn-ghost md:hidden">Log out</button>}>Stats</PageTitle>
+      <p className="-mt-2 mb-4 text-sm text-zinc-500 md:hidden">Signed in as {user.email}</p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="card p-4">

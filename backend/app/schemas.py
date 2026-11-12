@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl
 
 from app.models import Status, WorkMode
 
@@ -81,7 +81,38 @@ class NoteCreate(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    password: str
+    email: EmailStr
+    password: str = Field(max_length=256)
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=256)
+    name: str = Field(default="", max_length=200)
+
+
+class GoogleLogin(BaseModel):
+    credential: str = Field(min_length=10, max_length=8000)  # Google ID token (JWT)
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    name: str
+    picture: str | None
+    has_password: bool
+    google_linked: bool
+
+    @classmethod
+    def from_user(cls, u) -> "UserOut":
+        return cls(
+            id=u.id,
+            email=u.email,
+            name=u.name,
+            picture=u.picture,
+            has_password=u.password_hash is not None,
+            google_linked=u.google_sub is not None,
+        )
 
 
 class Stats(BaseModel):

@@ -67,7 +67,19 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <button onClick={logout} className="mt-auto px-3 text-left text-sm text-zinc-500 hover:text-zinc-300">Log out</button>
+        <div className="mt-auto flex items-center gap-3 px-2">
+          {me.data.picture ? (
+            <img src={me.data.picture} alt="" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full" />
+          ) : (
+            <div className="grid h-8 w-8 place-items-center rounded-full bg-indigo-600 text-sm font-medium text-white">
+              {(me.data.name || me.data.email)[0].toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm">{me.data.name || me.data.email}</div>
+            <button onClick={logout} className="text-xs text-zinc-500 hover:text-zinc-300">Log out</button>
+          </div>
+        </div>
       </aside>
 
       <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))] md:px-8 md:pb-10 md:pt-8">
@@ -75,7 +87,7 @@ export default function App() {
           <Route path="/" element={<Jobs />} />
           <Route path="/tracker" element={<Tracker />} />
           <Route path="/add" element={<AddJob />} />
-          <Route path="/stats" element={<StatsPage onLogout={logout} />} />
+          <Route path="/stats" element={<StatsPage user={me.data} onLogout={logout} />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
         </Routes>
       </main>

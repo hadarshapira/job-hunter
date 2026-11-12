@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import require_user
+from app.auth import current_user
 from app.db import get_session
-from app.models import Event, Job, Status
+from app.models import Event, Job, Status, User
 from app.schemas import (
     ImportRequest,
     ImportResult,
@@ -22,14 +22,17 @@ from app.schemas import (
 from app.services.dedup import dedup_key
 from app.services.importer import fetch_and_parse
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api")
 
 RESPONDED = {Status.screening, Status.interview, Status.offer, Status.rejected}
 FOLLOW_UP_DAYS = 7
 
 
-async def _load(session: AsyncSession, job_id: int) -> Job:
-    job = await session.scalar(select(Job).where(Job.id == job_id).options(selectinload(Job.events)))
+async def _load(session: AsyncSession, user: User, job_id: int) -> Job:
+    # Always scoped to the signed-in user: another user's job id returns 404, never their data
+    job = await session.scalar(
+        select(Job).where(Job.id == job_id, Job.user_id == user.id).options(selectinload(Job.events))
+    )
     if not job:
         raise HTTPException(404, "Job not found")
     return job
@@ -53,9 +56,10 @@ def _apply_status(job: Job, new: Status) -> None:
 async def list_jobs(
     status: list[Status] | None = Query(None),
     q: str | None = None,
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    stmt = select(Job).order_by(Job.updated_at.desc())
+    stmt = select(Job).where(Job.user_id == user.id).order_by(Job.updated_at.desc())
     if status:
         stmt = stmt.where(Job.status.in_([s.value for s in status]))
     if q:
@@ -65,23 +69,28 @@ async def list_jobs(
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)
-async def create_job(body: JobCreate, session: AsyncSession = Depends(get_session)):
+async def create_job(body: JobCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     data = body.model_dump(exclude={"status"})
-    job = Job(**data, source="manual", dedup_key=dedup_key(body.title, body.company, body.location), events=[])
-    job.status = Status.saved
-    job.events.append(Event(kind="created", text="Added manually"))
+    job = Job(
+        **data,
+        user_id=user.id,
+        source="manual",
+        dedup_key=dedup_key(body.title, body.company, body.location),
+        status=Status.saved,
+        events=[Event(kind="created", text="Added manually")],
+    )
     _apply_status(job, body.status)
     session.add(job)
     await session.commit()
-    return await _load(session, job.id)
+    return await _load(session, user, job.id)
 
 
 @router.post("/jobs/import", response_model=ImportResult)
-async def import_job(body: ImportRequest, session: AsyncSession = Depends(get_session)):
+async def import_job(body: ImportRequest, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     url = str(body.url)
-    existing = await session.scalar(select(Job).where(Job.url == url))
+    existing = await session.scalar(select(Job.id).where(Job.user_id == user.id, Job.url == url))
     if existing:
-        return ImportResult(job=await _load(session, existing.id), duplicate=True)
+        return ImportResult(job=await _load(session, user, existing), duplicate=True)
     try:
         parsed = await fetch_and_parse(url)
     except httpx.HTTPError as exc:
@@ -89,11 +98,12 @@ async def import_job(body: ImportRequest, session: AsyncSession = Depends(get_se
 
     key = dedup_key(parsed.title, parsed.company, parsed.location)
     if parsed.complete and parsed.company:
-        dup = await session.scalar(select(Job).where(Job.dedup_key == key))
+        dup = await session.scalar(select(Job.id).where(Job.user_id == user.id, Job.dedup_key == key))
         if dup:
-            return ImportResult(job=await _load(session, dup.id), duplicate=True)
+            return ImportResult(job=await _load(session, user, dup), duplicate=True)
 
     job = Job(
+        user_id=user.id,
         source="link",
         url=url,
         title=parsed.title,
@@ -109,17 +119,19 @@ async def import_job(body: ImportRequest, session: AsyncSession = Depends(get_se
     )
     session.add(job)
     await session.commit()
-    return ImportResult(job=await _load(session, job.id), complete=parsed.complete)
+    return ImportResult(job=await _load(session, user, job.id), complete=parsed.complete)
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
-async def get_job(job_id: int, session: AsyncSession = Depends(get_session)):
-    return await _load(session, job_id)
+async def get_job(job_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    return await _load(session, user, job_id)
 
 
 @router.patch("/jobs/{job_id}", response_model=JobOut)
-async def update_job(job_id: int, body: JobUpdate, session: AsyncSession = Depends(get_session)):
-    job = await _load(session, job_id)
+async def update_job(
+    job_id: int, body: JobUpdate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
+):
+    job = await _load(session, user, job_id)
     changes = body.model_dump(exclude_unset=True)
     new_status = changes.pop("status", None)
     for key, value in changes.items():
@@ -130,35 +142,38 @@ async def update_job(job_id: int, body: JobUpdate, session: AsyncSession = Depen
         _apply_status(job, Status(new_status))
     job.updated_at = datetime.now(timezone.utc)
     await session.commit()
-    return await _load(session, job_id)
+    return await _load(session, user, job_id)
 
 
 @router.post("/jobs/{job_id}/notes", response_model=JobOut)
-async def add_note(job_id: int, body: NoteCreate, session: AsyncSession = Depends(get_session)):
-    job = await _load(session, job_id)
+async def add_note(
+    job_id: int, body: NoteCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
+):
+    job = await _load(session, user, job_id)
     job.events.append(Event(kind="note", text=body.text.strip()))
     job.updated_at = datetime.now(timezone.utc)
     await session.commit()
-    return await _load(session, job_id)
+    return await _load(session, user, job_id)
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
-async def delete_job(job_id: int, session: AsyncSession = Depends(get_session)):
-    job = await _load(session, job_id)
+async def delete_job(job_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    job = await _load(session, user, job_id)
     await session.delete(job)
     await session.commit()
 
 
 @router.get("/stats", response_model=Stats)
-async def stats(session: AsyncSession = Depends(get_session)):
-    by_status = dict((await session.execute(select(Job.status, func.count()).group_by(Job.status))).all())
-    by_source = dict((await session.execute(select(Job.source, func.count()).group_by(Job.source))).all())
-    applied_total = await session.scalar(select(func.count()).where(Job.applied_at.is_not(None))) or 0
+async def stats(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    mine = Job.user_id == user.id
+    by_status = dict((await session.execute(select(Job.status, func.count()).where(mine).group_by(Job.status))).all())
+    by_source = dict((await session.execute(select(Job.source, func.count()).where(mine).group_by(Job.source))).all())
+    applied_total = await session.scalar(select(func.count()).where(mine, Job.applied_at.is_not(None))) or 0
     responded = await session.scalar(
-        select(func.count()).where(Job.applied_at.is_not(None), Job.status.in_([s.value for s in RESPONDED]))
+        select(func.count()).where(mine, Job.applied_at.is_not(None), Job.status.in_([s.value for s in RESPONDED]))
     ) or 0
     due = await session.scalar(
-        select(func.count()).where(Job.follow_up_on.is_not(None), Job.follow_up_on <= date.today())
+        select(func.count()).where(mine, Job.follow_up_on.is_not(None), Job.follow_up_on <= date.today())
     ) or 0
     return Stats(
         by_status=by_status,
