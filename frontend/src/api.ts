@@ -3,15 +3,15 @@ export type Status =
 export type WorkMode = 'onsite' | 'hybrid' | 'remote' | 'unknown'
 
 export const STATUSES: { value: Status; label: string; tone: string }[] = [
-  { value: 'saved', label: 'Saved', tone: 'bg-slate-500/15 text-slate-700 dark:text-slate-300' },
-  { value: 'applied', label: 'Applied', tone: 'bg-blue-500/15 text-blue-700 dark:text-blue-300' },
-  { value: 'screening', label: 'Screening', tone: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300' },
-  { value: 'interview', label: 'Interview', tone: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
-  { value: 'offer', label: 'Offer', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  { value: 'rejected', label: 'Rejected', tone: 'bg-rose-500/15 text-rose-700 dark:text-rose-300' },
-  { value: 'ghosted', label: 'Ghosted', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
-  { value: 'archived', label: 'Archived', tone: 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400' },
-  { value: 'new', label: 'New', tone: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300' },
+  { value: 'saved', label: 'Saved', tone: 'tone-saved' },
+  { value: 'applied', label: 'Applied', tone: 'tone-applied' },
+  { value: 'screening', label: 'Screening', tone: 'tone-screening' },
+  { value: 'interview', label: 'Interview', tone: 'tone-interview' },
+  { value: 'offer', label: 'Offer', tone: 'tone-offer' },
+  { value: 'rejected', label: 'Rejected', tone: 'tone-rejected' },
+  { value: 'ghosted', label: 'Ghosted', tone: 'tone-ghosted' },
+  { value: 'archived', label: 'Archived', tone: 'tone-archived' },
+  { value: 'new', label: 'New', tone: 'tone-new' },
 ]
 export const statusInfo = (s: string) => STATUSES.find((x) => x.value === s) ?? STATUSES[0]
 

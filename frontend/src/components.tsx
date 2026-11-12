@@ -6,26 +6,35 @@ export function StatusPill({ status }: { status: string }) {
   return <span className={`pill ${s.tone}`}>{s.label}</span>
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  jsearch: 'Web search',
+  greenhouse: 'Career page',
+  lever: 'Career page',
+  ashby: 'Career page',
+  link: 'Your link',
+  manual: 'Added by you',
+}
+
 export function JobCard({ job, compact = false }: { job: JobSummary; compact?: boolean }) {
   const mode = WORK_MODES.find((m) => m.value === job.work_mode)
   const due = isDue(job.follow_up_on)
   return (
-    <Link to={`/jobs/${job.id}`} className="card block p-4 transition hover:border-indigo-500/60">
+    <Link to={`/jobs/${job.id}`} className="card block p-4 transition hover:border-primary/60">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-medium">{job.title}</div>
-          <div className="truncate text-sm text-zinc-500">
+          <div className="truncate text-sm text-muted">
             {[job.company, job.location].filter(Boolean).join(' · ') || 'Unknown company'}
           </div>
         </div>
         {!compact && <StatusPill status={job.status} />}
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-        {mode && job.work_mode !== 'unknown' && <span className="pill bg-zinc-500/10">{mode.label}</span>}
-        {job.distance_km != null && <span className="pill bg-zinc-500/10">📍 {Math.round(job.distance_km)} km</span>}
-        {job.salary && <span className="pill bg-zinc-500/10">{job.salary}</span>}
-        {due && <span className="pill bg-amber-500/20 text-amber-700 dark:text-amber-300">Follow up {fmtDate(job.follow_up_on)}</span>}
-        {!compact && <span className="ml-auto">{job.source}</span>}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+        {mode && job.work_mode !== 'unknown' && <span className="pill bg-surface-2">{mode.label}</span>}
+        {job.distance_km != null && <span className="pill bg-surface-2">📍 {Math.round(job.distance_km)} km</span>}
+        {job.salary && <span className="pill bg-surface-2">{job.salary}</span>}
+        {due && <span className="pill bg-warn/15 text-warn">Follow up {fmtDate(job.follow_up_on)}</span>}
+        {!compact && <span className="ml-auto">{SOURCE_LABEL[job.source] ?? job.source}</span>}
       </div>
     </Link>
   )
@@ -41,5 +50,5 @@ export function PageTitle({ children, right }: { children: React.ReactNode; righ
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="card p-8 text-center text-sm text-zinc-500">{children}</div>
+  return <div className="card p-8 text-center text-sm text-muted">{children}</div>
 }

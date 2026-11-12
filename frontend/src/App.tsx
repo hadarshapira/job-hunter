@@ -29,14 +29,14 @@ export default function App() {
   const qc = useQueryClient()
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
 
-  if (me.isPending) return <div className="grid h-dvh place-items-center text-zinc-500">Loading…</div>
+  if (me.isPending) return <div className="grid h-dvh place-items-center text-muted">Loading…</div>
   if (me.error instanceof AuthError) return <Login />
   if (me.isError)
     return (
       <div className="grid h-dvh place-items-center p-6 text-center">
         <div>
           <p className="font-medium">Can't reach the JobHunter server.</p>
-          <p className="mt-1 text-sm text-zinc-500">Is Docker running? ({String(me.error.message)})</p>
+          <p className="mt-1 text-sm text-muted">Is Docker running? ({String(me.error.message)})</p>
           <button className="btn-primary mt-4" onClick={() => me.refetch()}>Retry</button>
         </div>
       </div>
@@ -51,7 +51,7 @@ export default function App() {
   return (
     <div className="min-h-dvh md:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-zinc-200 p-4 md:flex dark:border-zinc-800">
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-line p-4 md:flex ">
         <div className="mb-6 flex items-center gap-2 px-2 text-lg font-semibold">
           <img src="/icon.svg" className="h-7 w-7" alt="" /> JobHunter
         </div>
@@ -62,7 +62,7 @@ export default function App() {
               to={n.to}
               end={n.to === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${isActive ? 'bg-indigo-600 text-white' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'}`
+                `flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${isActive ? 'bg-primary text-on-primary' : 'hover:bg-surface-2'}`
               }
             >
               <Icon d={n.icon} /> {n.label}
@@ -73,18 +73,18 @@ export default function App() {
           {me.data.picture ? (
             <img src={me.data.picture} alt="" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full" />
           ) : (
-            <div className="grid h-8 w-8 place-items-center rounded-full bg-indigo-600 text-sm font-medium text-white">
+            <div className="grid h-8 w-8 place-items-center rounded-full bg-primary text-sm font-medium text-white">
               {(me.data.name || me.data.email)[0].toUpperCase()}
             </div>
           )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm">{me.data.name || me.data.email}</div>
-            <button onClick={logout} className="text-xs text-zinc-500 hover:text-zinc-300">Log out</button>
+            <button onClick={logout} className="text-xs text-muted hover:text-ink">Log out</button>
           </div>
         </div>
       </aside>
 
-      <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))] md:px-8 md:pb-10 md:pt-8">
+      <main className="mx-auto w-full min-w-0 max-w-5xl px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))] md:px-8 md:pb-10 md:pt-8">
         <Routes>
           <Route path="/" element={<Jobs />} />
           <Route path="/tracker" element={<Tracker />} />
@@ -96,14 +96,14 @@ export default function App() {
       </main>
 
       {/* Phone bottom bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-zinc-200 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/90">
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {NAV.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
             end={n.to === '/'}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-1 py-2.5 text-[11px] ${isActive ? 'text-indigo-500' : 'text-zinc-500'}`
+              `flex flex-col items-center gap-1 py-2.5 text-[11px] ${isActive ? 'text-primary' : 'text-muted'}`
             }
           >
             <Icon d={n.icon} />

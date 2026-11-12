@@ -21,9 +21,9 @@ function ChipsInput({ values, onChange, placeholder }: { values: string[]; onCha
     <div>
       <div className="mb-2 flex flex-wrap gap-2">
         {values.map((v) => (
-          <span key={v} className="pill bg-indigo-500/15 py-1 pr-1 text-sm text-indigo-700 dark:text-indigo-300">
+          <span key={v} className="pill bg-primary-soft py-1 pr-1 text-sm text-primary">
             {v}
-            <button type="button" aria-label={`Remove ${v}`} className="ml-1 rounded-full px-1.5 hover:bg-indigo-500/20" onClick={() => onChange(values.filter((x) => x !== v))}>
+            <button type="button" aria-label={`Remove ${v}`} className="ml-1 rounded-full px-1.5 hover:bg-primary/20" onClick={() => onChange(values.filter((x) => x !== v))}>
               ×
             </button>
           </span>
@@ -84,12 +84,12 @@ export default function SettingsPage() {
       >
         <section className="card grid gap-3 p-4">
           <h2 className="font-medium">Where you live</h2>
-          <p className="-mt-2 text-sm text-zinc-500">Used only to measure how far each office is from you.</p>
+          <p className="-mt-2 text-sm text-muted">Used only to measure how far each office is from you.</p>
           <input className="input" placeholder="City or address, e.g. Ramat Gan" value={draft.home_label} onChange={(e) => set('home_label', e.target.value)} />
           {draft.home_lat !== null && settings.data?.home_found && !dirty && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">✓ Found: {settings.data.home_found}</p>
+            <p className="text-xs text-ok">✓ Found: {settings.data.home_found}</p>
           )}
-          {!draft.home_label && <p className="text-xs text-amber-600 dark:text-amber-400">No home set, so jobs aren't filtered by distance yet.</p>}
+          {!draft.home_label && <p className="text-xs text-warn">No home set, so jobs aren't filtered by distance yet.</p>}
         </section>
 
         <section className="card grid gap-4 p-4">
@@ -101,7 +101,7 @@ export default function SettingsPage() {
                 key={m.value}
                 onClick={() => toggleMode(m.value)}
                 aria-pressed={draft.work_modes.includes(m.value)}
-                className={`rounded-full border px-4 py-2 text-sm ${draft.work_modes.includes(m.value) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-zinc-300 dark:border-zinc-700'}`}
+                className={`rounded-full border px-4 py-2 text-sm ${draft.work_modes.includes(m.value) ? 'border-primary bg-primary text-on-primary' : 'border-line '}`}
               >
                 {draft.work_modes.includes(m.value) ? '✓ ' : ''}{m.label}
               </button>
@@ -110,24 +110,24 @@ export default function SettingsPage() {
           {draft.work_modes.includes('onsite') && (
             <label className="grid gap-1 text-sm">
               <span>On-site jobs up to <b>{draft.max_km_onsite} km</b> from home</span>
-              <input type="range" min={5} max={150} step={5} value={draft.max_km_onsite} onChange={(e) => set('max_km_onsite', Number(e.target.value))} className="accent-indigo-600" />
+              <input type="range" min={5} max={150} step={5} value={draft.max_km_onsite} onChange={(e) => set('max_km_onsite', Number(e.target.value))} className="accent-[var(--primary)]" />
             </label>
           )}
           {draft.work_modes.includes('hybrid') && (
             <label className="grid gap-1 text-sm">
               <span>Hybrid jobs up to <b>{draft.max_km_hybrid} km</b> from home</span>
-              <input type="range" min={5} max={150} step={5} value={draft.max_km_hybrid} onChange={(e) => set('max_km_hybrid', Number(e.target.value))} className="accent-indigo-600" />
+              <input type="range" min={5} max={150} step={5} value={draft.max_km_hybrid} onChange={(e) => set('max_km_hybrid', Number(e.target.value))} className="accent-[var(--primary)]" />
             </label>
           )}
-          {draft.work_modes.includes('remote') && <p className="text-sm text-zinc-500">Remote jobs in Israel are included at any distance.</p>}
+          {draft.work_modes.includes('remote') && <p className="text-sm text-muted">Remote jobs in Israel are included at any distance.</p>}
         </section>
 
         <section className="card grid gap-3 p-4">
           <h2 className="font-medium">Job titles to look for</h2>
-          <p className="-mt-2 text-sm text-zinc-500">A job matches if its title contains every word of any phrase. The first phrase is also used for the daily web search.</p>
+          <p className="-mt-2 text-sm text-muted">A job matches if its title contains every word of any phrase. The first phrase is also used for the daily web search.</p>
           <ChipsInput values={draft.title_keywords} onChange={(v) => set('title_keywords', v)} placeholder="e.g. data engineer" />
           <label className="mt-1 flex items-center gap-2 text-sm">
-            <input type="checkbox" className="h-4 w-4 accent-indigo-600" checked={draft.senior_only} onChange={(e) => set('senior_only', e.target.checked)} />
+            <input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={draft.senior_only} onChange={(e) => set('senior_only', e.target.checked)} />
             Only senior roles (Senior, Staff, Lead, Principal…)
           </label>
         </section>
@@ -137,16 +137,16 @@ export default function SettingsPage() {
           <ChipsInput values={draft.exclude_keywords} onChange={(v) => set('exclude_keywords', v)} placeholder="e.g. junior" />
         </section>
 
-        {save.isError && <p className="text-sm text-rose-500">{save.error.message}</p>}
+        {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
         <div className="sticky bottom-20 z-10 flex items-center gap-3 md:bottom-4">
           <button className="btn-primary shadow-lg" disabled={!dirty || save.isPending}>{save.isPending ? 'Saving…' : 'Save settings'}</button>
-          {save.isSuccess && !dirty && <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved ✓</span>}
+          {save.isSuccess && !dirty && <span className="text-sm text-ok">Saved ✓</span>}
         </div>
       </form>
 
       <section className="card mt-6 grid gap-3 p-4">
         <h2 className="font-medium">Find jobs</h2>
-        <p className="-mt-2 text-sm text-zinc-500">The app searches automatically every day at 07:00 and 15:00. Save your settings, then search now to try them.</p>
+        <p className="-mt-2 text-sm text-muted">The app searches automatically every day at 07:00 and 15:00. Save your settings, then search now to try them.</p>
         <FindJobsButton />
       </section>
 
@@ -171,7 +171,7 @@ function Companies() {
   return (
     <section className="card mt-4 grid gap-3 p-4">
       <h2 className="font-medium">Company career pages watched ({companies.data?.length ?? 0})</h2>
-      <p className="-mt-2 text-sm text-zinc-500">
+      <p className="-mt-2 text-sm text-muted">
         Shared by everyone using this app. Add any company that hires through Greenhouse, Lever or Ashby by pasting its careers link.
       </p>
       <form
@@ -184,13 +184,13 @@ function Companies() {
         <input className="input" placeholder="https://jobs.lever.co/company" value={board} onChange={(e) => setBoard(e.target.value)} />
         <button className="btn-primary shrink-0" disabled={!board.trim() || add.isPending}>{add.isPending ? 'Checking…' : 'Add company'}</button>
       </form>
-      {add.isError && <p className="text-sm text-rose-500">{add.error.message}</p>}
+      {add.isError && <p className="text-sm text-danger">{add.error.message}</p>}
       <div className="flex flex-wrap gap-2">
         {companies.data?.map((c) => (
-          <span key={c.id} title={c.last_error || `${c.ats}: ${c.slug}`} className={`pill gap-1 py-1 text-sm ${c.ok ? 'bg-zinc-500/10' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'}`}>
+          <span key={c.id} title={c.last_error || `${c.ats}: ${c.slug}`} className={`pill gap-1 py-1 text-sm ${c.ok ? 'bg-surface-2' : 'bg-danger/15 text-danger'}`}>
             {!c.ok && '⚠ '}{c.name}
             {c.mine && (
-              <button aria-label={`Remove ${c.name}`} className="rounded-full px-1 hover:bg-zinc-500/20" onClick={() => remove.mutate(c.id)}>×</button>
+              <button aria-label={`Remove ${c.name}`} className="rounded-full px-1 hover:bg-surface-2" onClick={() => remove.mutate(c.id)}>×</button>
             )}
           </span>
         ))}

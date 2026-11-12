@@ -89,7 +89,7 @@ export default function Login() {
       <div className="card w-full max-w-sm p-6">
         <img src="/icon.svg" alt="" className="mx-auto h-14 w-14" />
         <h1 className="mt-3 text-center text-xl font-semibold">JobHunter</h1>
-        <p className="mb-5 text-center text-sm text-zinc-500">
+        <p className="mb-5 text-center text-sm text-muted">
           {mode === 'signup' ? 'Create your account' : 'Sign in to your job search'}
         </p>
 
@@ -98,7 +98,7 @@ export default function Login() {
         ) : (
           <button
             type="button"
-            className="flex h-11 w-full items-center justify-center gap-3 rounded-full border border-zinc-300 bg-white text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            className="flex h-11 w-full items-center justify-center gap-3 rounded-full border border-line bg-surface text-sm font-medium text-ink hover:bg-surface-2"
             onClick={() =>
               setError(
                 'Google sign-in is not set up on this server yet. The app owner needs to add GOOGLE_CLIENT_ID to the .env file (see README). You can use email for now.',
@@ -114,8 +114,8 @@ export default function Login() {
             {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
           </button>
         )}
-        <div className="my-4 flex items-center gap-3 text-xs text-zinc-500">
-          <div className="h-px flex-1 bg-zinc-300 dark:bg-zinc-700" /> or with email <div className="h-px flex-1 bg-zinc-300 dark:bg-zinc-700" />
+        <div className="my-4 flex items-center gap-3 text-xs text-muted">
+          <div className="h-px flex-1 bg-line" /> or with email <div className="h-px flex-1 bg-line" />
         </div>
 
         <form onSubmit={submit} className="grid gap-3">
@@ -141,17 +141,17 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error && <p className="text-sm text-rose-500">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
           <button className="btn-primary w-full" disabled={busy}>
             {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
           </button>
         </form>
 
         {signupAllowed && (
-          <p className="mt-4 text-center text-sm text-zinc-500">
+          <p className="mt-4 text-center text-sm text-muted">
             {mode === 'signin' ? 'New here? ' : 'Already have an account? '}
             <button
-              className="text-indigo-500 underline"
+              className="text-primary underline"
               onClick={() => {
                 setMode(mode === 'signin' ? 'signup' : 'signin')
                 setError('')

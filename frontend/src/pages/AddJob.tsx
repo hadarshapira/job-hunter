@@ -53,17 +53,17 @@ export default function AddJob() {
         }}
       >
         <label className="mb-1.5 block text-sm font-medium">Paste a job link</label>
-        <p className="mb-3 text-xs text-zinc-500">LinkedIn, Greenhouse, Lever, Comeet, company career pages… any link.</p>
+        <p className="mb-3 text-xs text-muted">LinkedIn, Greenhouse, Lever, Comeet, company career pages… any link.</p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input className="input" type="url" inputMode="url" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} required />
           <button className="btn-primary shrink-0" disabled={importJob.isPending}>
             {importJob.isPending ? 'Importing…' : 'Import'}
           </button>
         </div>
-        {importJob.isError && <p className="mt-2 text-sm text-rose-500">{importJob.error.message}</p>}
+        {importJob.isError && <p className="mt-2 text-sm text-danger">{importJob.error.message}</p>}
       </form>
 
-      <button className="mt-4 text-sm text-indigo-500 underline" onClick={() => setManual(!manual)}>
+      <button className="mt-4 text-sm text-primary underline" onClick={() => setManual(!manual)}>
         {manual ? 'Hide manual form' : 'Or enter the details manually'}
       </button>
 
@@ -83,7 +83,7 @@ export default function AddJob() {
           </select>
           <input className="input" placeholder="Link (optional)" value={form.url} onChange={set('url')} />
           <textarea className="input min-h-32 sm:col-span-2" placeholder="Job description" value={form.description} onChange={set('description')} />
-          {createJob.isError && <p className="text-sm text-rose-500 sm:col-span-2">{createJob.error.message}</p>}
+          {createJob.isError && <p className="text-sm text-danger sm:col-span-2">{createJob.error.message}</p>}
           <button className="btn-primary sm:col-span-2" disabled={createJob.isPending}>Save job</button>
         </form>
       )}

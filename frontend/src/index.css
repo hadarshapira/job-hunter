@@ -1,31 +1,119 @@
 @import "tailwindcss";
 
+/* ---------- Palette: calm slate + sage. Change colors here only. ---------- */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+  --bg: #f3f2ee;
+  --surface: #fbfaf7;
+  --surface-2: #ebe9e3;
+  --line: #dcd8cf;
+  --ink: #2a2c30;
+  --muted: #6b6d71;
+  --primary: #4d7a71;
+  --primary-strong: #3f665e;
+  --primary-soft: #dfe9e5;
+  --on-primary: #ffffff;
+  --ok: #4c7a57;
+  --warn: #8f6420;
+  --danger: #a24f4b;
+
+  /* Status colors (text); backgrounds are a light tint of the same color */
+  --st-new: #4f6f8a;
+  --st-saved: #6a6e75;
+  --st-applied: #4f6f99;
+  --st-screening: #3f7d7d;
+  --st-interview: #6e5f99;
+  --st-offer: #4c7a57;
+  --st-rejected: #9a5552;
+  --st-ghosted: #8a6c3c;
+  --st-archived: #77777a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #14161a;
+    --surface: #1b1e23;
+    --surface-2: #23272d;
+    --line: #2f343b;
+    --ink: #e2e0db;
+    --muted: #9a9ca1;
+    --primary: #7da79d;
+    --primary-strong: #93b9b0;
+    --primary-soft: #22312e;
+    --on-primary: #0f1c19;
+    --ok: #8fbf99;
+    --warn: #d6b06a;
+    --danger: #d8918c;
+
+    --st-new: #93afc6;
+    --st-saved: #a5a8ae;
+    --st-applied: #93aed3;
+    --st-screening: #8cc0bd;
+    --st-interview: #b3a7d6;
+    --st-offer: #8fbf99;
+    --st-rejected: #d8918c;
+    --st-ghosted: #cfb07c;
+    --st-archived: #909095;
+  }
+}
+
+/* Expose the palette as Tailwind colors: bg-surface, text-muted, border-line, bg-primary/20 … */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-[#0b0d12] dark:text-zinc-100;
+  @apply bg-bg text-ink antialiased;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
 }
 
 @utility card {
-  @apply rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900;
+  @apply rounded-2xl border border-line bg-surface;
 }
 
 @utility input {
-  @apply w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-zinc-700 dark:bg-zinc-950;
+  @apply w-full min-w-0 rounded-xl border border-line bg-surface px-3 py-2.5 text-base text-ink outline-none placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/25;
 }
 
 @utility btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-on-primary transition hover:bg-primary-strong disabled:opacity-50;
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-300 px-4 py-2.5 text-sm font-medium transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-medium transition hover:bg-surface-2 disabled:opacity-50;
 }
 
 @utility pill {
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
 }
+
+/* Status pills: tone-<status> */
+.tone-new { --tone: var(--st-new); }
+.tone-saved { --tone: var(--st-saved); }
+.tone-applied { --tone: var(--st-applied); }
+.tone-screening { --tone: var(--st-screening); }
+.tone-interview { --tone: var(--st-interview); }
+.tone-offer { --tone: var(--st-offer); }
+.tone-rejected { --tone: var(--st-rejected); }
+.tone-ghosted { --tone: var(--st-ghosted); }
+.tone-archived { --tone: var(--st-archived); }
+[class*="tone-"] {
+  color: var(--tone);
+  background-color: color-mix(in oklab, var(--tone) 15%, transparent);
+}
+/* Solid stage color, e.g. for the pipeline bar */
+.tone-solid { background-color: var(--tone); }

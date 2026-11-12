@@ -20,11 +20,11 @@ export default function StatsPage({ user, onLogout }: { user: User; onLogout: ()
   return (
     <>
       <PageTitle right={<button onClick={onLogout} className="btn-ghost md:hidden">Log out</button>}>Stats</PageTitle>
-      <p className="-mt-2 mb-4 text-sm text-zinc-500 md:hidden">Signed in as {user.email}</p>
+      <p className="-mt-2 mb-4 text-sm text-muted md:hidden">Signed in as {user.email}</p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="card p-4">
-            <div className="text-xs text-zinc-500">{t.label}</div>
+            <div className="text-xs text-muted">{t.label}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{t.value}</div>
           </div>
         ))}
@@ -36,13 +36,13 @@ export default function StatsPage({ user, onLogout }: { user: User; onLogout: ()
           {STATUSES.filter((x) => s.by_status[x.value]).map((x) => (
             <div key={x.value} className="grid grid-cols-[6rem_1fr_2rem] items-center gap-3 text-sm">
               <span>{x.label}</span>
-              <div className="h-2.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
-                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${(s.by_status[x.value] / max) * 100}%` }} />
+              <div className="h-2.5 rounded-full bg-surface-2">
+                <div className={`h-full rounded-full tone-solid tone-${x.value}`} style={{ width: `${(s.by_status[x.value] / max) * 100}%` }} />
               </div>
               <span className="text-right tabular-nums">{s.by_status[x.value]}</span>
             </div>
           ))}
-          {total === 0 && <p className="text-sm text-zinc-500">No jobs yet.</p>}
+          {total === 0 && <p className="text-sm text-muted">No jobs yet.</p>}
         </div>
       </div>
 
@@ -50,7 +50,7 @@ export default function StatsPage({ user, onLogout }: { user: User; onLogout: ()
         <h2 className="mb-3 font-medium">By source</h2>
         <div className="flex flex-wrap gap-2 text-sm">
           {Object.entries(s.by_source).map(([src, n]) => (
-            <span key={src} className="pill bg-zinc-500/10 px-3 py-1">{src}: {n}</span>
+            <span key={src} className="pill bg-surface-2 px-3 py-1">{src}: {n}</span>
           ))}
         </div>
       </div>

@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, isDue, STATUSES, type JobSummary, type Status } from '../api'
+import { api, isDue, type JobSummary, type Status } from '../api'
 import { Empty, JobCard, PageTitle } from '../components'
 
+// Stages live in the Tracker; here just: what's new, what I kept, what I dismissed
 const FILTERS: { label: string; statuses?: Status[] }[] = [
   { label: 'New for you', statuses: ['new'] },
-  { label: 'Active', statuses: ['saved', 'applied', 'screening', 'interview', 'offer'] },
+  { label: 'My jobs', statuses: ['saved', 'applied', 'screening', 'interview', 'offer'] },
+  { label: 'Not for me', statuses: ['archived'] },
   { label: 'All' },
-  ...STATUSES.filter((s) => s.value !== 'new').map((s) => ({ label: s.label, statuses: [s.value] })),
 ]
 
 const timeAgo = (iso: string) => {
@@ -49,20 +50,20 @@ export function FindJobsButton() {
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary" disabled={running} onClick={() => start.mutate()}>
-          {running ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> Searching…</> : '🔍 Find jobs now'}
+          {running ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-on-primary/40 border-t-on-primary" /> Searching…</> : '🔍 Find jobs now'}
         </button>
         {s?.last_finished && !running && (
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-muted">
             Last search {timeAgo(s.last_finished)}: {s.last_added === 0 ? 'nothing new' : `${s.last_added} new job${s.last_added === 1 ? '' : 's'}`}
           </span>
         )}
       </div>
-      {start.isError && <p className="text-sm text-rose-500">{start.error.message}</p>}
-      {running && <p className="text-xs text-zinc-500">Checking company career pages and the web. The first search can take about a minute.</p>}
-      {s && !s.jsearch_enabled && <p className="text-xs text-zinc-500">Web search (JSearch) is off; only company career pages are searched.</p>}
-      {s?.jsearch_quota_left != null && <p className="text-xs text-zinc-500">Web searches left this month (shared): {s.jsearch_quota_left}</p>}
+      {start.isError && <p className="text-sm text-danger">{start.error.message}</p>}
+      {running && <p className="text-xs text-muted">Checking company career pages and the web. The first search can take about a minute.</p>}
+      {s && !s.jsearch_enabled && <p className="text-xs text-muted">Web search (JSearch) is off; only company career pages are searched.</p>}
+      {s?.jsearch_quota_left != null && <p className="text-xs text-muted">Web searches left this month (shared): {s.jsearch_quota_left}</p>}
       {!running && s?.last_errors.length ? (
-        <details className="text-xs text-amber-600 dark:text-amber-400">
+        <details className="text-xs text-warn">
           <summary>{s.last_errors.length} source{s.last_errors.length > 1 ? 's' : ''} had problems</summary>
           <ul className="mt-1 list-inside list-disc">{s.last_errors.map((e) => <li key={e}>{e}</li>)}</ul>
         </details>
@@ -107,15 +108,16 @@ export default function Jobs() {
     <>
       <PageTitle right={<Link to="/add" className="btn-primary hidden md:inline-flex">+ Add job</Link>}>Jobs</PageTitle>
       <input className="input mb-3" placeholder="Search title or company…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+      <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map((f, i) => (
           <button
             key={f.label}
             onClick={() => setFilter(i)}
-            className={`pill shrink-0 border px-3 py-1.5 text-sm ${i === active ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-zinc-300 dark:border-zinc-700'}`}
+            aria-pressed={i === active}
+            className={`pill border px-3 py-1.5 text-sm ${i === active ? 'border-primary bg-primary text-on-primary' : 'border-line'}`}
           >
             {f.label}
-            {i === 0 && stats.data?.new ? <span className="ml-1.5 rounded-full bg-white/25 px-1.5">{stats.data.new}</span> : null}
+            {i === 0 && stats.data?.new ? <span className="ml-1.5 rounded-full bg-on-primary/20 px-1.5">{stats.data.new}</span> : null}
           </button>
         ))}
       </div>
@@ -127,7 +129,7 @@ export default function Jobs() {
       )}
 
       {due.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+        <div className="mb-4 rounded-2xl border border-warn/40 bg-warn/10 p-3 text-sm">
           ⏰ {due.length} follow-up{due.length > 1 ? 's' : ''} due: {due.map((j) => j.company || j.title).join(', ')}
         </div>
       )}
@@ -137,15 +139,15 @@ export default function Jobs() {
       {jobs.data?.length === 0 && (
         <Empty>
           {isNew ? (
-            <>No new jobs right now. Tune your search in <Link to="/settings" className="text-indigo-500 underline">Settings</Link>, or search now.</>
+            <>No new jobs right now. Tune your search in <Link to="/settings" className="text-primary underline">Settings</Link>, or search now.</>
           ) : (
-            <>No jobs here yet. <Link to="/add" className="text-indigo-500 underline">Paste a job link</Link> to get started.</>
+            <>No jobs here yet. <Link to="/add" className="text-primary underline">Paste a job link</Link> to get started.</>
           )}
         </Empty>
       )}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {jobs.data?.map((j) => (
-          <div key={j.id}>
+          <div key={j.id} className="min-w-0">
             <JobCard job={j} />
             {j.status === 'new' && <NewJobActions job={j} />}
           </div>

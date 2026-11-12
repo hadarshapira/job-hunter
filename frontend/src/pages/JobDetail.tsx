@@ -54,12 +54,12 @@ export default function JobDetail() {
 
   return (
     <div className="grid gap-4">
-      <Link to="/" className="text-sm text-zinc-500">← Back</Link>
-      {note && !j.parse_issues && <div className="rounded-2xl border border-indigo-500/40 bg-indigo-500/10 p-3 text-sm">{note}</div>}
+      <Link to="/" className="text-sm text-muted">← Back</Link>
+      {note && !j.parse_issues && <div className="rounded-2xl border border-primary/40 bg-primary-soft p-3 text-sm">{note}</div>}
       {j.parse_issues && (
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+        <div className="rounded-2xl border border-warn/40 bg-warn/10 p-3 text-sm">
           <p className="font-medium">Some details couldn't be read from the job page:</p>
-          <ul className="mt-1 list-inside list-disc text-zinc-600 dark:text-zinc-300">
+          <ul className="mt-1 list-inside list-disc text-ink/80">
             {j.parse_issues.split('\n').map((i) => <li key={i}>{i}</li>)}
           </ul>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -70,8 +70,8 @@ export default function JobDetail() {
             )}
             <button className="btn-ghost" onClick={() => setEditing(true)}>Fill in manually</button>
           </div>
-          {reimport.isError && <p className="mt-2 text-rose-500">{reimport.error.message}</p>}
-          {reimport.isSuccess && j.parse_issues && <p className="mt-2 text-zinc-500">Still incomplete. This site may need a dedicated reader.</p>}
+          {reimport.isError && <p className="mt-2 text-danger">{reimport.error.message}</p>}
+          {reimport.isSuccess && j.parse_issues && <p className="mt-2 text-muted">Still incomplete. This site may need a dedicated reader.</p>}
         </div>
       )}
 
@@ -102,14 +102,14 @@ export default function JobDetail() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold">{j.title}</h1>
-                <p className="text-zinc-500">{[j.company, j.location].filter(Boolean).join(' · ')}</p>
+                <p className="text-muted">{[j.company, j.location].filter(Boolean).join(' · ')}</p>
               </div>
               <StatusPill status={j.status} />
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-sm">
-              {j.work_mode !== 'unknown' && <span className="pill bg-zinc-500/10">{WORK_MODES.find((m) => m.value === j.work_mode)?.label}</span>}
-              {j.salary && <span className="pill bg-zinc-500/10">{j.salary}</span>}
-              {j.posted_at && <span className="pill bg-zinc-500/10">Posted {j.posted_at}</span>}
+              {j.work_mode !== 'unknown' && <span className="pill bg-surface-2">{WORK_MODES.find((m) => m.value === j.work_mode)?.label}</span>}
+              {j.salary && <span className="pill bg-surface-2">{j.salary}</span>}
+              {j.posted_at && <span className="pill bg-surface-2">Posted {j.posted_at}</span>}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {j.url && <a href={j.url} target="_blank" rel="noreferrer" className="btn-primary">Open posting ↗</a>}
@@ -126,17 +126,17 @@ export default function JobDetail() {
 
       <div className="card grid gap-3 p-4 sm:grid-cols-3">
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-500">Status</span>
+          <span className="mb-1 block text-muted">Status</span>
           <select className="input" value={j.status} onChange={(e) => update.mutate({ status: e.target.value as Job['status'] })}>
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-500">Follow up on</span>
+          <span className="mb-1 block text-muted">Follow up on</span>
           <input className="input" type="date" value={j.follow_up_on ?? ''} onChange={(e) => update.mutate({ follow_up_on: e.target.value || null })} />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-500">Contact / recruiter</span>
+          <span className="mb-1 block text-muted">Contact / recruiter</span>
           <input
             className="input"
             defaultValue={j.contact}
@@ -145,15 +145,15 @@ export default function JobDetail() {
             onBlur={(e) => e.target.value !== j.contact && update.mutate({ contact: e.target.value })}
           />
         </label>
-        {update.isError && <p className="text-sm text-rose-500 sm:col-span-3">{update.error.message}</p>}
+        {update.isError && <p className="text-sm text-danger sm:col-span-3">{update.error.message}</p>}
       </div>
 
       {j.description && (
         <div className="card p-4">
           <button className="flex w-full items-center justify-between font-medium" onClick={() => setShowDesc(!showDesc)}>
-            Job description <span className="text-zinc-500">{showDesc ? '−' : '+'}</span>
+            Job description <span className="text-muted">{showDesc ? '−' : '+'}</span>
           </button>
-          {showDesc && <div className="mt-3 whitespace-pre-line text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">{j.description}</div>}
+          {showDesc && <div className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/80">{j.description}</div>}
         </div>
       )}
 
@@ -175,7 +175,7 @@ export default function JobDetail() {
               <span className="w-5 shrink-0 text-center">{EVENT_ICON[ev.kind] ?? '•'}</span>
               <div className="min-w-0">
                 <div className="whitespace-pre-line">{ev.text}</div>
-                <div className="text-xs text-zinc-500">{new Date(ev.created_at).toLocaleString()}</div>
+                <div className="text-xs text-muted">{new Date(ev.created_at).toLocaleString()}</div>
               </div>
             </li>
           ))}
@@ -183,7 +183,7 @@ export default function JobDetail() {
       </div>
 
       <button
-        className="justify-self-start text-sm text-rose-500"
+        className="justify-self-start text-sm text-danger"
         onClick={() => confirm('Delete this job and its timeline?') && remove.mutate()}
       >
         Delete job
