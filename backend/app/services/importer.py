@@ -169,9 +169,13 @@ def parse_job_html(html: str) -> ParsedJob | None:
 
 
 async def fetch_and_parse(url: str, client: httpx.AsyncClient | None = None) -> ParsedJob:
+    from app.services.ats import resolve_ats  # local import: ats builds on this module
+
     own = client is None
     client = client or httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": USER_AGENT})
     try:
+        if ats_job := await resolve_ats(url, client):
+            return ats_job
         resp = await client.get(url)
         resp.raise_for_status()
     finally:
