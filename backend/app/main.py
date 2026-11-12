@@ -1,10 +1,15 @@
 from fastapi import FastAPI
 
-from app import api, auth
+import logging
 
-app = FastAPI(title="JobHunter", version="0.1.0")
+from app import api, api_discovery, auth
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+app = FastAPI(title="JobHunter", version="0.2.0")
 app.include_router(auth.router)
 app.include_router(api.router)
+app.include_router(api_discovery.router)
 
 
 @app.get("/api/health")

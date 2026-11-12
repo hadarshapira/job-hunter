@@ -63,14 +63,30 @@ def greenhouse_ref(url: str) -> tuple[str, str] | None:
 
 async def _greenhouse(client: httpx.AsyncClient, board: str, job_id: str) -> ParsedJob | None:
     r = await client.get(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{job_id}")
+    return greenhouse_job(r.json(), board) if r.status_code == 200 else None
+
+
+async def _lever(client: httpx.AsyncClient, company: str, job_id: str) -> ParsedJob | None:
+    r = await client.get(f"https://api.lever.co/v0/postings/{company}/{job_id}")
+    return lever_job(r.json(), company) if r.status_code == 200 else None
+
+
+async def _ashby(client: httpx.AsyncClient, org: str, job_id: str) -> ParsedJob | None:
+    r = await client.get(f"https://api.ashbyhq.com/posting-api/job-board/{org}", params={"includeCompensation": "true"})
     if r.status_code != 200:
         return None
-    d = r.json()
+    job = next((j for j in r.json().get("jobs", []) if j.get("id") == job_id), None)
+    return ashby_job(job, org) if job else None
+
+
+# --- Converters from each ATS's JSON to ParsedJob (also used by the board collectors) ---
+
+def greenhouse_job(d: dict, board: str) -> ParsedJob:
     description = html_to_text(unescape(d.get("content", "")))
     location = (d.get("location") or {}).get("name", "")
     return ParsedJob(
         title=d.get("title", "").strip(),
-        company=d.get("company_name") or board.title(),
+        company=d.get("company_name") or board.replace("-", " ").title(),
         location=location,
         work_mode=_mode(None, d.get("title", ""), location, description),
         description=description,
@@ -78,11 +94,7 @@ async def _greenhouse(client: httpx.AsyncClient, board: str, job_id: str) -> Par
     )
 
 
-async def _lever(client: httpx.AsyncClient, company: str, job_id: str) -> ParsedJob | None:
-    r = await client.get(f"https://api.lever.co/v0/postings/{company}/{job_id}")
-    if r.status_code != 200:
-        return None
-    d = r.json()
+def lever_job(d: dict, company: str) -> ParsedJob:
     parts = [d.get("descriptionPlain", "")]
     for section in d.get("lists", []):
         items = html_to_text(section.get("content", ""))
@@ -105,13 +117,7 @@ async def _lever(client: httpx.AsyncClient, company: str, job_id: str) -> Parsed
     )
 
 
-async def _ashby(client: httpx.AsyncClient, org: str, job_id: str) -> ParsedJob | None:
-    r = await client.get(f"https://api.ashbyhq.com/posting-api/job-board/{org}", params={"includeCompensation": "true"})
-    if r.status_code != 200:
-        return None
-    job = next((j for j in r.json().get("jobs", []) if j.get("id") == job_id), None)
-    if not job:
-        return None
+def ashby_job(job: dict, org: str) -> ParsedJob:
     description = job.get("descriptionPlain") or html_to_text(job.get("descriptionHtml", ""))
     workplace = job.get("workplaceType") or ("Remote" if job.get("isRemote") else None)
     comp = (job.get("compensation") or {}).get("compensationTierSummary")

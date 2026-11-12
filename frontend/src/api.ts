@@ -37,6 +37,7 @@ export interface JobSummary {
   posted_at: string | null
   applied_at: string | null
   follow_up_on: string | null
+  distance_km: number | null
   created_at: string
   updated_at: string
 }
@@ -49,7 +50,33 @@ export interface Job extends JobSummary {
   events: JobEvent[]
 }
 
+export interface SearchSettings {
+  home_label: string
+  home_found: string | null
+  home_lat: number | null
+  home_lon: number | null
+  work_modes: ('onsite' | 'hybrid' | 'remote')[]
+  max_km_onsite: number
+  max_km_hybrid: number
+  title_keywords: string[]
+  exclude_keywords: string[]
+  senior_only: boolean
+}
+
+export interface Company { id: number; ats: string; slug: string; name: string; mine: boolean; ok: boolean; last_error: string }
+
+export interface CollectStatus {
+  running: boolean
+  last_started: string | null
+  last_finished: string | null
+  last_added: number | null
+  last_errors: string[]
+  jsearch_enabled: boolean
+  jsearch_quota_left: number | null
+}
+
 export interface Stats {
+  new: number
   by_status: Record<string, number>
   by_source: Record<string, number>
   applied_total: number
@@ -115,6 +142,13 @@ export const api = {
   addNote: (id: number, text: string) => req<Job>(`/jobs/${id}/notes`, { method: 'POST', body: json({ text }) }),
   deleteJob: (id: number) => req<void>(`/jobs/${id}`, { method: 'DELETE' }),
   stats: () => req<Stats>('/stats'),
+  settings: () => req<SearchSettings>('/settings'),
+  saveSettings: (s: SearchSettings) => req<SearchSettings>('/settings', { method: 'PUT', body: json(s) }),
+  companies: () => req<Company[]>('/companies'),
+  addCompany: (board: string, name = '') => req<Company>('/companies', { method: 'POST', body: json({ board, name }) }),
+  removeCompany: (id: number) => req<void>(`/companies/${id}`, { method: 'DELETE' }),
+  collectStatus: () => req<CollectStatus>('/collect'),
+  collectNow: () => req<{ started: boolean; detail?: string }>('/collect', { method: 'POST' }),
 }
 
 export const isDue = (d: string | null) => !!d && d <= new Date().toISOString().slice(0, 10)

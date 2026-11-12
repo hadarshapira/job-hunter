@@ -22,6 +22,7 @@ export function JobCard({ job, compact = false }: { job: JobSummary; compact?: b
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
         {mode && job.work_mode !== 'unknown' && <span className="pill bg-zinc-500/10">{mode.label}</span>}
+        {job.distance_km != null && <span className="pill bg-zinc-500/10">📍 {Math.round(job.distance_km)} km</span>}
         {job.salary && <span className="pill bg-zinc-500/10">{job.salary}</span>}
         {due && <span className="pill bg-amber-500/20 text-amber-700 dark:text-amber-300">Follow up {fmtDate(job.follow_up_on)}</span>}
         {!compact && <span className="ml-auto">{job.source}</span>}

@@ -5,6 +5,7 @@ import AddJob from './pages/AddJob'
 import JobDetail from './pages/JobDetail'
 import Jobs from './pages/Jobs'
 import Login from './pages/Login'
+import SettingsPage from './pages/Settings'
 import StatsPage from './pages/Stats'
 import Tracker from './pages/Tracker'
 
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/tracker', label: 'Tracker', icon: 'M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v6h-4z' },
   { to: '/add', label: 'Add', icon: 'M12 5v14M5 12h14' },
   { to: '/stats', label: 'Stats', icon: 'M5 19V11M12 19V5M19 19v-6' },
+  { to: '/settings', label: 'Settings', icon: 'M4 7h10M18 7h2M4 17h4M12 17h8M14 4v6M8 14v6' },
 ]
 
 function Icon({ d }: { d: string }) {
@@ -89,11 +91,12 @@ export default function App() {
           <Route path="/add" element={<AddJob />} />
           <Route path="/stats" element={<StatsPage user={me.data} onLogout={logout} />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
 
       {/* Phone bottom bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-zinc-200 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/90">
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-zinc-200 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/90">
         {NAV.map((n) => (
           <NavLink
             key={n.to}

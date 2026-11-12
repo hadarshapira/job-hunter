@@ -11,6 +11,12 @@
    - lists remaining issues: no title, no company, no location, description under 200 chars
    - issues are saved on the job (`parse_issues`), shown with a **Retry import** button, and logged as `import_quality host=… extractor=… issues=…`
 
+## Known source quirks (keep tests for each)
+- **JSearch:** the search path is `/search-v2` (`/search` was retired). `job_country` is often `US` for Israeli jobs ("Tel Aviv-Yafo, US"), and city names can be in Hebrew. The place name decides (`geo.in_israel`), coordinates outside Israel are dropped and re-geocoded (`jsearch.to_posting`).
+- **Greenhouse:** new `job-boards.greenhouse.io` pages are JavaScript-only; always use the boards API.
+- **LinkedIn:** no JSON-LD; read the guest job page (`sites/linkedin.py`).
+- **Long descriptions:** work mode is often mentioned only at the end; always scan the whole text.
+
 ## Rules
 1. **Never save junk silently.** Every import path ends in `quality.assess()`. If a new generic problem appears (another site name, another title pattern), add it to `quality.py` with a test, so every site benefits.
 2. **Prefer official/public structured sources over HTML scraping:** an ATS JSON API, then embedded JSON-LD, then the site's stable HTML classes, then page metadata.

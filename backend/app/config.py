@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     # OAuth client ID from Google Cloud Console (empty = Google sign-in hidden)
     google_client_id: str = ""
     signup_enabled: bool = True
+    jsearch_api_key: str = ""
+    # Reuse a JSearch result for this long before spending another request on the same query
+    jsearch_cache_hours: int = 20
+    # Each JSearch query = 1 request of the free 200/month; stop when this many are left
+    jsearch_min_quota: int = 15
     cookie_secure: bool = False
     session_days: int = 30
 

@@ -219,6 +219,7 @@ async def stats(user: User = Depends(current_user), session: AsyncSession = Depe
         select(func.count()).where(mine, Job.follow_up_on.is_not(None), Job.follow_up_on <= date.today())
     ) or 0
     return Stats(
+        new=by_status.get(Status.new, 0),
         by_status=by_status,
         by_source=by_source,
         applied_total=applied_total,

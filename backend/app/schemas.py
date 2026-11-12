@@ -55,6 +55,7 @@ class JobSummary(BaseModel):
     posted_at: date | None
     applied_at: datetime | None
     follow_up_on: date | None
+    distance_km: float | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -117,6 +118,7 @@ class UserOut(BaseModel):
 
 
 class Stats(BaseModel):
+    new: int = 0
     by_status: dict[str, int]
     by_source: dict[str, int]
     applied_total: int
