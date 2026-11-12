@@ -35,6 +35,7 @@ export default function JobDetail() {
       setNewNote('')
     },
   })
+  const reimport = useMutation({ mutationFn: () => api.reimportJob(id), onSuccess: (r) => onSaved(r.job) })
   const remove = useMutation({
     mutationFn: () => api.deleteJob(id),
     onSuccess: () => {
@@ -54,7 +55,25 @@ export default function JobDetail() {
   return (
     <div className="grid gap-4">
       <Link to="/" className="text-sm text-zinc-500">← Back</Link>
-      {note && <div className="rounded-2xl border border-indigo-500/40 bg-indigo-500/10 p-3 text-sm">{note}</div>}
+      {note && !j.parse_issues && <div className="rounded-2xl border border-indigo-500/40 bg-indigo-500/10 p-3 text-sm">{note}</div>}
+      {j.parse_issues && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <p className="font-medium">Some details couldn't be read from the job page:</p>
+          <ul className="mt-1 list-inside list-disc text-zinc-600 dark:text-zinc-300">
+            {j.parse_issues.split('\n').map((i) => <li key={i}>{i}</li>)}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {j.url && (
+              <button className="btn-primary" disabled={reimport.isPending} onClick={() => reimport.mutate()}>
+                {reimport.isPending ? 'Retrying…' : 'Retry import'}
+              </button>
+            )}
+            <button className="btn-ghost" onClick={() => setEditing(true)}>Fill in manually</button>
+          </div>
+          {reimport.isError && <p className="mt-2 text-rose-500">{reimport.error.message}</p>}
+          {reimport.isSuccess && j.parse_issues && <p className="mt-2 text-zinc-500">Still incomplete. This site may need a dedicated reader.</p>}
+        </div>
+      )}
 
       <div className="card p-4">
         {editing ? (
@@ -95,6 +114,11 @@ export default function JobDetail() {
             <div className="mt-4 flex flex-wrap gap-2">
               {j.url && <a href={j.url} target="_blank" rel="noreferrer" className="btn-primary">Open posting ↗</a>}
               <button className="btn-ghost" onClick={() => setEditing(true)}>Edit</button>
+              {j.url && !j.parse_issues && (
+                <button className="btn-ghost" disabled={reimport.isPending} onClick={() => reimport.mutate()}>
+                  {reimport.isPending ? 'Refreshing…' : 'Refresh from link'}
+                </button>
+              )}
             </div>
           </>
         )}

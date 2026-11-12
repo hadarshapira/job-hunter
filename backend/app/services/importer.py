@@ -30,6 +30,7 @@ class ParsedJob:
     posted_at: date | None = None
     complete: bool = True
     extra: dict = field(default_factory=dict)
+    issues: list[str] = field(default_factory=list)  # filled by quality.assess()
 
 
 def html_to_text(html: str) -> str:
@@ -138,7 +139,7 @@ def parse_job_html(html: str) -> ParsedJob | None:
         description = html_to_text(item.get("description", ""))
         location = _location(item)
         mode = WorkMode.remote if item.get("jobLocationType") == "TELECOMMUTE" else guess_work_mode(
-            item.get("title", ""), location, description[:3000]
+            item.get("title", ""), location, description
         )
         return ParsedJob(
             title=unescape(item.get("title", "")).strip() or "Untitled job",
@@ -169,19 +170,26 @@ def parse_job_html(html: str) -> ParsedJob | None:
 
 
 async def fetch_and_parse(url: str, client: httpx.AsyncClient | None = None) -> ParsedJob:
-    from app.services.ats import resolve_ats  # local import: ats builds on this module
+    """Import pipeline: site extractors → generic HTML (JSON-LD, then page metadata) → quality check."""
+    # Local imports: these modules build on helpers in this one
+    from app.services.quality import assess
+    from app.services.sites import extractors
 
     own = client is None
     client = client or httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": USER_AGENT})
     try:
-        if ats_job := await resolve_ats(url, client):
-            return ats_job
-        resp = await client.get(url)
-        resp.raise_for_status()
+        parsed = None
+        for name, extract in extractors():
+            if parsed := await extract(url, client):
+                parsed.extra["extractor"] = name
+                break
+        if parsed is None:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            parsed = parse_job_html(resp.text) or ParsedJob(title="Imported job (edit details)", complete=False)
+            parsed.extra["extractor"] = "jsonld" if parsed.complete else "metadata"
     finally:
         if own:
             await client.aclose()
-    parsed = parse_job_html(resp.text)
-    if parsed is None:
-        return ParsedJob(title="Imported job (edit details)", complete=False)
+    parsed, parsed.issues = assess(parsed)
     return parsed

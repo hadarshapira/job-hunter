@@ -10,7 +10,11 @@ GH_JOB = {
     "title": "Senior Data Engineer",
     "company_name": "Riskified",
     "location": {"name": "Tel Aviv-Yafo, Tel Aviv District, Israel"},
-    "content": "&lt;p&gt;Build &lt;b&gt;Spark&lt;/b&gt; pipelines. Hybrid work.&lt;/p&gt;",
+    "content": "&lt;p&gt;Build &lt;b&gt;Spark&lt;/b&gt; pipelines. Hybrid work.&lt;/p&gt;"
+    + "&lt;ul&gt;&lt;li&gt;Own batch and streaming data pipelines end to end&lt;/li&gt;"
+    + "&lt;li&gt;Model data in dbt on Snowflake&lt;/li&gt;&lt;li&gt;5+ years of Python and SQL&lt;/li&gt;"
+    + "&lt;li&gt;Experience with Kafka, Airflow and AWS&lt;/li&gt;"
+    + "&lt;li&gt;Mentor engineers and lead data platform design reviews&lt;/li&gt;&lt;/ul&gt;",
     "first_published": "2026-10-20T10:00:00-04:00",
 }
 LEVER_JOB = {

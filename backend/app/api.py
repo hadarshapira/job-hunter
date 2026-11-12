@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
@@ -23,6 +24,7 @@ from app.services.dedup import dedup_key
 from app.services.importer import fetch_and_parse
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("jobhunter.import")
 
 RESPONDED = {Status.screening, Status.interview, Status.offer, Status.rejected}
 FOLLOW_UP_DAYS = 7
@@ -31,7 +33,10 @@ FOLLOW_UP_DAYS = 7
 async def _load(session: AsyncSession, user: User, job_id: int) -> Job:
     # Always scoped to the signed-in user: another user's job id returns 404, never their data
     job = await session.scalar(
-        select(Job).where(Job.id == job_id, Job.user_id == user.id).options(selectinload(Job.events))
+        select(Job)
+        .where(Job.id == job_id, Job.user_id == user.id)
+        .options(selectinload(Job.events))
+        .execution_options(populate_existing=True)  # reload events in timeline order after changes
     )
     if not job:
         raise HTTPException(404, "Job not found")
@@ -114,12 +119,50 @@ async def import_job(body: ImportRequest, user: User = Depends(current_user), se
         salary=parsed.salary,
         posted_at=parsed.posted_at,
         dedup_key=key,
+        parse_issues="\n".join(parsed.issues),
         status=Status.saved,
         events=[Event(kind="created", text=f"Imported from {httpx.URL(url).host}")],
     )
     session.add(job)
     await session.commit()
+    _log_issues(url, parsed)
     return ImportResult(job=await _load(session, user, job.id), complete=parsed.complete)
+
+
+def _log_issues(url: str, parsed) -> None:
+    if parsed.issues:
+        log.warning(
+            "import_quality host=%s extractor=%s issues=%s",
+            httpx.URL(url).host, parsed.extra.get("extractor"), "; ".join(parsed.issues),
+        )
+
+
+@router.post("/jobs/{job_id}/reimport", response_model=ImportResult)
+async def reimport_job(job_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    """Re-read a job's link with the current parsers. Tracker data (status, notes, dates) is kept."""
+    job = await _load(session, user, job_id)
+    if not job.url:
+        raise HTTPException(400, "This job has no link to re-import from")
+    try:
+        parsed = await fetch_and_parse(job.url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(422, f"Could not fetch that page: {exc.__class__.__name__}")
+    changed = []
+    for field in ("title", "company", "location", "description", "salary", "posted_at"):
+        new = getattr(parsed, field)
+        if new and new != getattr(job, field):
+            setattr(job, field, new)
+            changed.append(field)
+    if parsed.work_mode != "unknown" and parsed.work_mode != job.work_mode:
+        job.work_mode = parsed.work_mode
+        changed.append("work_mode")
+    job.parse_issues = "\n".join(parsed.issues)
+    job.dedup_key = dedup_key(job.title, job.company, job.location)
+    job.events.append(Event(kind="note", text="Re-imported: " + (", ".join(changed) + " updated" if changed else "no changes")))
+    job.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    _log_issues(job.url, parsed)
+    return ImportResult(job=await _load(session, user, job_id), complete=parsed.complete)
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)

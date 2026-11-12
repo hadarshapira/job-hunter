@@ -63,6 +63,7 @@ class JobOut(JobSummary):
     description: str
     notes: str
     contact: str
+    parse_issues: str = ""
     events: list[EventOut] = []
 
 

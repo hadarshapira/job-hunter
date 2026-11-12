@@ -45,6 +45,7 @@ export interface Job extends JobSummary {
   description: string
   notes: string
   contact: string
+  parse_issues: string
   events: JobEvent[]
 }
 
@@ -108,6 +109,8 @@ export const api = {
   createJob: (body: Partial<Job>) => req<Job>('/jobs', { method: 'POST', body: json(body) }),
   importJob: (url: string) =>
     req<{ job: Job; duplicate: boolean; complete: boolean }>('/jobs/import', { method: 'POST', body: json({ url }) }),
+  reimportJob: (id: number) =>
+    req<{ job: Job; duplicate: boolean; complete: boolean }>(`/jobs/${id}/reimport`, { method: 'POST' }),
   updateJob: (id: number, body: Partial<Job>) => req<Job>(`/jobs/${id}`, { method: 'PATCH', body: json(body) }),
   addNote: (id: number, text: string) => req<Job>(`/jobs/${id}/notes`, { method: 'POST', body: json({ text }) }),
   deleteJob: (id: number) => req<void>(`/jobs/${id}`, { method: 'DELETE' }),

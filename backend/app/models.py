@@ -60,6 +60,7 @@ class Job(Base):
     salary: Mapped[str | None] = mapped_column(String(120))
     posted_at: Mapped[date | None] = mapped_column(Date)
     dedup_key: Mapped[str] = mapped_column(String(400), index=True)
+    parse_issues: Mapped[str] = mapped_column(Text, default="")  # newline-separated import problems
 
     # Tracker fields
     status: Mapped[str] = mapped_column(String(20), default=Status.saved, index=True)
