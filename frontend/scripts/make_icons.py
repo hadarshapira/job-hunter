@@ -1,4 +1,4 @@
-"""Generate the PNG app icons (magnifier on indigo) with only the Python standard library.
+"""Generate the PNG app icons (magnifier on terracotta) with only the Python standard library.
 
 Usage: python scripts/make_icons.py   (writes into public/)
 """
@@ -8,8 +8,8 @@ import struct
 import zlib
 from pathlib import Path
 
-BG = (79, 70, 229)
-FG = (255, 255, 255)
+BG = (181, 100, 63)
+FG = (255, 250, 244)
 OUT = Path(__file__).resolve().parent.parent / "public"
 
 

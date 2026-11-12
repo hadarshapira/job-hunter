@@ -15,8 +15,9 @@ export default defineConfig({
         name: 'JobHunter',
         short_name: 'JobHunter',
         description: 'Senior Data Engineer job search, tracked in one place',
-        theme_color: '#4f46e5',
-        background_color: '#0b0d12',
+        // Installed-app bars and splash screen; the page's theme-color tags switch them for dark mode
+        theme_color: '#f6efe6',
+        background_color: '#f6efe6',
         display: 'standalone',
         start_url: '/',
         // Lets you "Share → JobHunter" a job from the LinkedIn app or browser on Android

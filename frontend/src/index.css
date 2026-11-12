@@ -1,60 +1,61 @@
 @import "tailwindcss";
 
-/* ---------- Palette: calm slate + sage. Change colors here only. ---------- */
+/* ---------- Palette: warm cream + terracotta. Change colors here only. ----------
+   Also update the phone bar colors in index.html (theme-color) and vite.config.ts (manifest). */
 :root {
   color-scheme: light;
-  --bg: #f3f2ee;
-  --surface: #fbfaf7;
-  --surface-2: #ebe9e3;
-  --line: #dcd8cf;
-  --ink: #2a2c30;
-  --muted: #6b6d71;
-  --primary: #4d7a71;
-  --primary-strong: #3f665e;
-  --primary-soft: #dfe9e5;
-  --on-primary: #ffffff;
-  --ok: #4c7a57;
-  --warn: #8f6420;
-  --danger: #a24f4b;
+  --bg: #f6efe6;
+  --surface: #fffaf4;
+  --surface-2: #efe5d8;
+  --line: #e2d4c3;
+  --ink: #3b2f27;
+  --muted: #7c6b5e;
+  --primary: #b5643f;
+  --primary-strong: #9c5333;
+  --primary-soft: #f4e0d2;
+  --on-primary: #fffaf4;
+  --ok: #5f7d4a;
+  --warn: #9a6a1c;
+  --danger: #a84c3f;
 
   /* Status colors (text); backgrounds are a light tint of the same color */
-  --st-new: #4f6f8a;
-  --st-saved: #6a6e75;
-  --st-applied: #4f6f99;
-  --st-screening: #3f7d7d;
-  --st-interview: #6e5f99;
-  --st-offer: #4c7a57;
-  --st-rejected: #9a5552;
-  --st-ghosted: #8a6c3c;
-  --st-archived: #77777a;
+  --st-new: #8a6a4f;
+  --st-saved: #7a6d63;
+  --st-applied: #9a6b3a;
+  --st-screening: #6f7f52;
+  --st-interview: #8e5a6e;
+  --st-offer: #5f7d4a;
+  --st-rejected: #a84c3f;
+  --st-ghosted: #8a7a5a;
+  --st-archived: #847a72;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg: #14161a;
-    --surface: #1b1e23;
-    --surface-2: #23272d;
-    --line: #2f343b;
-    --ink: #e2e0db;
-    --muted: #9a9ca1;
-    --primary: #7da79d;
-    --primary-strong: #93b9b0;
-    --primary-soft: #22312e;
-    --on-primary: #0f1c19;
-    --ok: #8fbf99;
-    --warn: #d6b06a;
-    --danger: #d8918c;
+    --bg: #1d1814;
+    --surface: #26201b;
+    --surface-2: #302822;
+    --line: #3d332b;
+    --ink: #f0e7dc;
+    --muted: #ab9b8c;
+    --primary: #e0976b;
+    --primary-strong: #eaab85;
+    --primary-soft: #3b2a20;
+    --on-primary: #2a1a10;
+    --ok: #a9c38f;
+    --warn: #e3b768;
+    --danger: #e59a8c;
 
-    --st-new: #93afc6;
-    --st-saved: #a5a8ae;
-    --st-applied: #93aed3;
-    --st-screening: #8cc0bd;
-    --st-interview: #b3a7d6;
-    --st-offer: #8fbf99;
-    --st-rejected: #d8918c;
-    --st-ghosted: #cfb07c;
-    --st-archived: #909095;
+    --st-new: #d3b394;
+    --st-saved: #bfb2a6;
+    --st-applied: #e0b37f;
+    --st-screening: #b7c58f;
+    --st-interview: #d7a3b6;
+    --st-offer: #a9c38f;
+    --st-rejected: #e59a8c;
+    --st-ghosted: #cdbb92;
+    --st-archived: #a39a92;
   }
 }
 
