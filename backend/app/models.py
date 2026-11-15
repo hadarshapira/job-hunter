@@ -68,6 +68,11 @@ class Job(Base):
     lon: Mapped[float | None] = mapped_column(Float)
     distance_km: Mapped[float | None] = mapped_column(Float)
 
+    # Match against the user's profile (None = no profile yet)
+    match_score: Mapped[int | None] = mapped_column(Integer, index=True)
+    match: Mapped[dict | None] = mapped_column(JSON)  # breakdown + skills table, see services/matching.py
+    match_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Tracker fields
     status: Mapped[str] = mapped_column(String(20), default=Status.saved, index=True)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -83,8 +88,11 @@ class Job(Base):
     )
 
 
-DEFAULT_TITLES = ["data engineer", "data platform", "big data", "data infrastructure", "analytics engineer"]
+DEFAULT_TITLES = ["data engineer", "data platform", "big data", "data infrastructure", "analytics engineer",
+                  "data architect", "data lead", "data warehouse"]
 DEFAULT_EXCLUDE = ["junior", "intern", "student", "graduate"]
+# Sources the job search can use; manual adds and pasted links are always allowed
+COLLECT_SOURCES = ["linkedin", "jsearch", "greenhouse", "lever", "ashby"]
 
 
 class UserSettings(Base):
@@ -102,6 +110,21 @@ class UserSettings(Base):
     title_keywords: Mapped[list] = mapped_column(JSON, default=lambda: list(DEFAULT_TITLES))
     exclude_keywords: Mapped[list] = mapped_column(JSON, default=lambda: list(DEFAULT_EXCLUDE))
     senior_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    sources: Mapped[list] = mapped_column(JSON, default=lambda: list(COLLECT_SOURCES))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class UserProfile(Base):
+    """What the user brings: CV text plus the skills and experience they confirmed. Used for match grades."""
+
+    __tablename__ = "user_profiles"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    cv_filename: Mapped[str] = mapped_column(String(255), default="")
+    cv_text: Mapped[str] = mapped_column(Text, default="")
+    cv_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    skills: Mapped[list] = mapped_column(JSON, default=list)
+    years_experience: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -142,6 +165,16 @@ class SearchCache(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class PostingCache(Base):
+    """Job pages already read (LinkedIn), shared by all users, so a job is fetched once even if nobody keeps it."""
+
+    __tablename__ = "posting_cache"
+
+    key: Mapped[str] = mapped_column(String(300), primary_key=True)  # "<source>:<external id>"
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class CollectionRun(Base):
     __tablename__ = "collection_runs"
 
@@ -152,6 +185,7 @@ class CollectionRun(Base):
     added: Mapped[int] = mapped_column(Integer, default=0)
     seen: Mapped[int] = mapped_column(Integer, default=0)
     errors: Mapped[str] = mapped_column(Text, default="")
+    stats: Mapped[dict | None] = mapped_column(JSON)  # what was found per source and why jobs were skipped
 
 
 class Event(Base):

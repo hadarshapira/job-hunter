@@ -56,6 +56,7 @@ class JobSummary(BaseModel):
     applied_at: datetime | None
     follow_up_on: date | None
     distance_km: float | None = None
+    match_score: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -65,6 +66,8 @@ class JobOut(JobSummary):
     notes: str
     contact: str
     parse_issues: str = ""
+    match: dict | None = None
+    match_at: datetime | None = None
     events: list[EventOut] = []
 
 

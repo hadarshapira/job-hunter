@@ -16,6 +16,13 @@ from app.main import app
 get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def no_linkedin_delay(monkeypatch):
+    from app.collectors import linkedin
+
+    monkeypatch.setattr(linkedin, "DELAY", (0, 0))
+
+
 @pytest.fixture
 async def maker():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")

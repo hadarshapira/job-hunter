@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { api, type SearchSettings } from '../api'
+import { api, SOURCES, type Profile, type SearchSettings } from '../api'
 import { Empty, PageTitle } from '../components'
 import { FindJobsButton } from './Jobs'
 
@@ -10,7 +10,7 @@ const MODES = [
   { value: 'remote', label: 'Remote' },
 ] as const
 
-function ChipsInput({ values, onChange, placeholder }: { values: string[]; onChange: (v: string[]) => void; placeholder: string }) {
+function ChipsInput({ values, onChange, placeholder, suggestions }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; suggestions?: string[] }) {
   const [text, setText] = useState('')
   const add = () => {
     const v = text.trim()
@@ -32,6 +32,7 @@ function ChipsInput({ values, onChange, placeholder }: { values: string[]; onCha
       <div className="flex gap-2">
         <input
           className="input"
+          list={suggestions ? 'chip-suggestions' : undefined}
           placeholder={placeholder}
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -43,6 +44,11 @@ function ChipsInput({ values, onChange, placeholder }: { values: string[]; onCha
           }}
         />
         <button type="button" className="btn-ghost shrink-0" onClick={add} disabled={!text.trim()}>Add</button>
+        {suggestions && (
+          <datalist id="chip-suggestions">
+            {suggestions.filter((s) => !values.includes(s)).map((s) => <option key={s} value={s} />)}
+          </datalist>
+        )}
       </div>
     </div>
   )
@@ -75,6 +81,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageTitle>Settings</PageTitle>
+      <ProfileSection />
       <form
         className="grid gap-4"
         onSubmit={(e) => {
@@ -82,6 +89,31 @@ export default function SettingsPage() {
           save.mutate(draft)
         }}
       >
+        <section className="card grid gap-3 p-4">
+          <h2 className="font-medium">Where to search</h2>
+          <p className="-mt-2 text-sm text-muted">Choose the sources "Find jobs now" and the daily searches use. Jobs already found stay in your list.</p>
+          <div className="grid gap-2">
+            {SOURCES.filter((s) => s.searchable).map((s) => {
+              const on = draft.sources.includes(s.value)
+              return (
+                <label key={s.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${on ? 'border-primary/60 bg-primary-soft/50' : 'border-line'}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-[var(--primary)]"
+                    checked={on}
+                    onChange={() => set('sources', on ? draft.sources.filter((x) => x !== s.value) : [...draft.sources, s.value])}
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium">{s.label}</span>
+                    <span className="block text-xs text-muted">{s.hint}</span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          {draft.sources.length === 0 && <p className="text-xs text-danger">Choose at least one source.</p>}
+        </section>
+
         <section className="card grid gap-3 p-4">
           <h2 className="font-medium">Where you live</h2>
           <p className="-mt-2 text-sm text-muted">Used only to measure how far each office is from you.</p>
@@ -194,6 +226,93 @@ function Companies() {
             )}
           </span>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function ProfileSection() {
+  const qc = useQueryClient()
+  const profile = useQuery({ queryKey: ['profile'], queryFn: api.profile })
+  const [draft, setDraft] = useState<Pick<Profile, 'skills' | 'years_experience'> | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  useEffect(() => {
+    if (profile.data && !draft) setDraft({ skills: profile.data.skills, years_experience: profile.data.years_experience })
+  }, [profile.data, draft])
+
+  const done = (p: Profile) => {
+    qc.setQueryData(['profile'], p)
+    setDraft({ skills: p.skills, years_experience: p.years_experience })
+    qc.invalidateQueries({ queryKey: ['jobs'] })
+    qc.invalidateQueries({ queryKey: ['job'] })
+  }
+  const upload = useMutation({ mutationFn: (f: File) => api.uploadCv(f), onSuccess: (p) => { done(p); setFile(null) } })
+  const save = useMutation({ mutationFn: api.saveProfile, onSuccess: done })
+
+  if (profile.isPending || !draft) return <section className="card mb-4 p-4 text-sm text-muted">Loading your profile…</section>
+  if (profile.isError) return <section className="card mb-4 p-4 text-sm text-danger">{profile.error.message}</section>
+  const p = profile.data
+  const dirty = JSON.stringify(draft) !== JSON.stringify({ skills: p.skills, years_experience: p.years_experience })
+  const result = save.data ?? upload.data
+
+  return (
+    <section className="card mb-4 grid gap-4 p-4">
+      <div>
+        <h2 className="font-medium">Your CV and skills</h2>
+        <p className="text-sm text-muted">Every job gets a match grade from these. Upload your CV, then check the skills and years it found.</p>
+      </div>
+
+      <div className="grid gap-2">
+        {p.cv_filename && (
+          <p className="text-sm">📄 {p.cv_filename} <span className="text-muted">· uploaded {p.cv_uploaded_at ? new Date(p.cv_uploaded_at).toLocaleDateString() : ''}</span></p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt"
+            className="text-sm file:mr-3 file:rounded-full file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-ink"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+          <button type="button" className="btn-primary shrink-0" disabled={!file || upload.isPending} onClick={() => file && upload.mutate(file)}>
+            {upload.isPending ? 'Reading CV…' : p.cv_filename ? 'Upload new CV' : 'Upload CV'}
+          </button>
+        </div>
+        <p className="text-xs text-muted">PDF, Word (.docx) or text.{p.skills.length ? ' A new CV replaces the skills list below.' : ''}</p>
+        {upload.isError && <p className="text-sm text-danger">{upload.error.message}</p>}
+      </div>
+
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Years of professional experience</span>
+        <input
+          type="number"
+          min={0}
+          max={50}
+          className="input w-28"
+          value={draft.years_experience ?? ''}
+          onChange={(e) => setDraft({ ...draft, years_experience: e.target.value === '' ? null : Number(e.target.value) })}
+        />
+        {p.cv_years_guess != null && p.cv_years_guess !== draft.years_experience && (
+          <span className="text-xs text-muted">Your CV's dates suggest about {p.cv_years_guess} years.</span>
+        )}
+      </label>
+
+      <div className="grid gap-2">
+        <span className="text-sm font-medium">Your skills ({draft.skills.length})</span>
+        <ChipsInput
+          values={draft.skills}
+          onChange={(skills) => setDraft({ ...draft, skills })}
+          placeholder="Add a skill, e.g. Airflow"
+          suggestions={p.known_skills}
+        />
+        <p className="text-xs text-muted">Add skills you know that your CV doesn't mention, and remove any it got wrong.</p>
+      </div>
+
+      {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save profile'}
+        </button>
+        {result?.rescored != null && !dirty && <span className="text-sm text-ok">✓ Saved. {result.rescored} job{result.rescored === 1 ? '' : 's'} re-graded.</span>}
       </div>
     </section>
   )

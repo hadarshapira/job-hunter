@@ -260,14 +260,14 @@ async def test_collect_filters_per_user_and_never_duplicates(maker, fast_geo, js
     assert all(status == "new" for _, status in jobs.values())
     assert set(await titles_for(maker, remote_only)) == {("AshbyCo", "Senior Data Engineer")}
     assert "Gone" in " ".join(result["errors"])  # broken board reported, others still collected
-    assert web.jsearch_calls == 1  # one shared query for both users
+    assert web.jsearch_calls == 4  # shared queries for both users: their top 4 title phrases
 
     # Second run: nothing new, cache reused, geocoding cached
     geo_calls = web.nominatim_calls
     async with web.client() as c:
         again = await ingest.collect(maker, client=c)
     assert again["added"] == {near: 0, remote_only: 0}
-    assert web.jsearch_calls == 1 and web.nominatim_calls == geo_calls
+    assert web.jsearch_calls == 4 and web.nominatim_calls == geo_calls
     async with maker() as s:
         assert await s.scalar(select(func.count()).select_from(GeoCache)) >= 3
 
@@ -388,3 +388,38 @@ async def test_collect_endpoint(authed, monkeypatch):
     assert status["running"] is False and status["last_started"] is None
     assert (await authed.post("/api/collect")).json() == {"started": True}
     assert len(started) == 1
+
+
+async def test_collect_uses_only_chosen_sources(maker, fast_geo, jsearch_key):
+    await add_companies(maker)
+    lever_only = await seed(maker, n=1, sources=["lever"])
+    web = FakeWeb()
+    async with web.client() as c:
+        await ingest.collect(maker, client=c)
+    assert set(await titles_for(maker, lever_only)) == {("LeverCo", "Data Platform Engineer")}
+    assert web.jsearch_calls == 0  # nobody wants web search, so no quota is spent
+
+
+async def test_sources_setting_api(authed):
+    s = (await authed.get("/api/settings")).json()
+    assert s["sources"] == ["linkedin", "jsearch", "greenhouse", "lever", "ashby"]
+    out = (await authed.put("/api/settings", json={**s, "sources": ["ashby", "greenhouse", "bogus"]})).json()
+    assert out["sources"] == ["greenhouse", "ashby"]
+    assert (await authed.put("/api/settings", json={**s, "sources": []})).status_code == 422
+
+
+async def test_source_filter_and_counts(authed, maker):
+    me = (await authed.get("/api/auth/me")).json()["id"]
+    async with maker() as s:
+        for i, src in enumerate(["greenhouse", "greenhouse", "jsearch", "lever"]):
+            s.add(Job(user_id=me, title=f"Data Engineer {i}", source=src, dedup_key=f"k{i}", status="new"))
+        await s.commit()
+    await authed.post("/api/jobs", json={"title": "Saved by hand"})
+    assert (await authed.get("/api/jobs/sources")).json() == {"greenhouse": 2, "jsearch": 1, "lever": 1, "manual": 1}
+    assert (await authed.get("/api/jobs/sources?status=new")).json() == {"greenhouse": 2, "jsearch": 1, "lever": 1}
+    got = (await authed.get("/api/jobs?source=greenhouse&source=lever")).json()
+    assert len(got) == 3 and {j["source"] for j in got} == {"greenhouse", "lever"}
+
+    async with new_client() as other:
+        await signup(other, "eve@example.com")
+        assert (await other.get("/api/jobs/sources")).json() == {}

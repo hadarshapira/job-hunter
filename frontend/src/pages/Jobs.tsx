@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, isDue, type JobSummary, type Status } from '../api'
+import { api, isDue, SOURCES, sourceLabel, type CollectStatus, type JobSummary, type Status } from '../api'
 import { Empty, JobCard, PageTitle } from '../components'
 
 // Stages live in the Tracker; here just: what's new, what I kept, what I dismissed
@@ -41,8 +41,8 @@ export function FindJobsButton() {
       qc.invalidateQueries({ queryKey: ['jobs'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
     }
-    // Give up waiting after 3 minutes
-    if (requestedAt && Date.now() - requestedAt > 180_000) setRequestedAt(null)
+    // Give up waiting after 8 minutes
+    if (requestedAt && Date.now() - requestedAt > 480_000) setRequestedAt(null)
   }, [requestedAt, ours, d, qc])
 
   const s = status.data
@@ -59,9 +59,10 @@ export function FindJobsButton() {
         )}
       </div>
       {start.isError && <p className="text-sm text-danger">{start.error.message}</p>}
-      {running && <p className="text-xs text-muted">Checking company career pages and the web. The first search can take about a minute.</p>}
+      {running && <p className="text-xs text-muted">Checking LinkedIn, company career pages and the web. LinkedIn is read slowly to avoid being blocked, so this can take a few minutes.</p>}
       {s && !s.jsearch_enabled && <p className="text-xs text-muted">Web search (JSearch) is off; only company career pages are searched.</p>}
       {s?.jsearch_quota_left != null && <p className="text-xs text-muted">Web searches left this month (shared): {s.jsearch_quota_left}</p>}
+      {!running && s?.last_stats && <SearchReport stats={s.last_stats} />}
       {!running && s?.last_errors.length ? (
         <details className="text-xs text-warn">
           <summary>{s.last_errors.length} source{s.last_errors.length > 1 ? 's' : ''} had problems</summary>
@@ -69,6 +70,57 @@ export function FindJobsButton() {
         </details>
       ) : null}
     </div>
+  )
+}
+
+const SKIP_LABEL: [string, string][] = [
+  ['title', 'title not in your list'],
+  ['location', 'too far / work mode'],
+  ['already_have', 'already in your jobs'],
+  ['duplicate', 'same job from another source'],
+]
+
+/** What the last search found per source, and why jobs were left out */
+function SearchReport({ stats }: { stats: NonNullable<CollectStatus['last_stats']> }) {
+  const li = stats.linkedin ?? {}
+  const rows = SOURCES.filter((s) => stats.sources[s.value]).map((s) => {
+    const n = stats.sources[s.value]
+    // LinkedIn jobs with other titles are dropped before their page is read, so add them back here
+    const titleSkip = (n.title ?? 0) + (s.value === 'linkedin' ? li.linkedin_title_skip ?? 0 : 0)
+    const found = (n.found ?? 0) + (s.value === 'linkedin' ? li.linkedin_title_skip ?? 0 : 0)
+    const counts: Record<string, number> = { ...n, title: titleSkip }
+    const left = SKIP_LABEL.filter(([k]) => counts[k] > 0).map(([k, label]) => `${counts[k]} ${label}`).join(' · ')
+    return { s, found, added: n.added ?? 0, left }
+  })
+  if (!rows.length) return null
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted">Last search report</summary>
+      <div className="mt-2 overflow-x-auto rounded-xl border border-line">
+        <table className="w-full">
+          <thead className="bg-surface-2 text-left text-muted">
+            <tr>
+              <th className="px-2 py-1.5 font-medium">Source</th>
+              <th className="px-2 py-1.5 font-medium">Found</th>
+              <th className="px-2 py-1.5 font-medium">New</th>
+              <th className="px-2 py-1.5 font-medium">Left out</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.s.value} className="border-t border-line align-top">
+                <td className="px-2 py-1.5">{r.s.label}</td>
+                <td className="px-2 py-1.5 tabular-nums">{r.found}</td>
+                <td className="px-2 py-1.5 font-medium tabular-nums text-ok">{r.added}</td>
+                <td className="px-2 py-1.5 text-muted">{r.left || '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {li.linkedin_deferred ? <p className="mt-1 text-muted">{li.linkedin_deferred} more LinkedIn jobs will be read in the next search.</p> : null}
+      <p className="mt-1 text-muted">To get more jobs, add titles or widen the distance in <Link to="/settings" className="underline">Settings</Link>.</p>
+    </details>
   )
 }
 
@@ -91,14 +143,29 @@ function NewJobActions({ job }: { job: JobSummary }) {
 
 export default function Jobs() {
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
+  const profile = useQuery({ queryKey: ['profile'], queryFn: api.profile })
   const [filter, setFilter] = useState<number | null>(null)
   // Open on "New for you" when there are new jobs, otherwise on "Active"
   const active = filter ?? (stats.data ? (stats.data.new > 0 ? 0 : 1) : null)
   const [q, setQ] = useState('')
   const query = useDeferredValue(q)
+  const [sort, setSortState] = useState<'match' | 'recent'>(() => {
+    try { return localStorage.getItem('jobs-sort') === 'recent' ? 'recent' : 'match' } catch { return 'match' }
+  })
+  const setSort = (s: 'match' | 'recent') => {
+    setSortState(s)
+    try { localStorage.setItem('jobs-sort', s) } catch { /* private mode */ }
+  }
+  const [source, setSource] = useState<string | null>(null)
+  // Under the 'jobs' key so every place that refreshes the list refreshes the counts too
+  const counts = useQuery({
+    queryKey: ['jobs', 'sources', active, query],
+    queryFn: () => api.jobSources({ status: FILTERS[active!].statuses, q: query || undefined }),
+    enabled: active !== null,
+  })
   const jobs = useQuery({
-    queryKey: ['jobs', active, query],
-    queryFn: () => api.jobs({ status: FILTERS[active!].statuses, q: query || undefined }),
+    queryKey: ['jobs', active, query, sort, source],
+    queryFn: () => api.jobs({ status: FILTERS[active!].statuses, q: query || undefined, sort, source: source ?? undefined }),
     enabled: active !== null,
   })
   const due = jobs.data?.filter((j) => isDue(j.follow_up_on)) ?? []
@@ -120,7 +187,42 @@ export default function Jobs() {
             {i === 0 && stats.data?.new ? <span className="ml-1.5 rounded-full bg-on-primary/20 px-1.5">{stats.data.new}</span> : null}
           </button>
         ))}
+        <select
+          aria-label="Sort jobs"
+          className="ml-auto rounded-full border border-line bg-surface px-3 py-1.5 text-sm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as 'match' | 'recent')}
+        >
+          <option value="match">Best match first</option>
+          <option value="recent">Newest first</option>
+        </select>
       </div>
+
+      {counts.data && Object.keys(counts.data).length > 0 && (
+        <div className="-mt-2 mb-4 flex gap-2 overflow-x-auto pb-1 text-xs">
+          {[null, ...SOURCES.map((s) => s.value).filter((v) => counts.data[v] || v === source),
+            ...Object.keys(counts.data).filter((v) => !SOURCES.some((s) => s.value === v))].map((v) => {
+            const n = v === null ? Object.values(counts.data).reduce((a, b) => a + b, 0) : counts.data[v] ?? 0
+            const on = v === source
+            return (
+              <button
+                key={v ?? 'all'}
+                onClick={() => setSource(v)}
+                aria-pressed={on}
+                className={`pill shrink-0 border px-2.5 py-1 ${on ? 'border-primary bg-primary-soft text-primary' : 'border-line text-muted'}`}
+              >
+                {v === null ? 'All sources' : sourceLabel(v)} <span className="ml-1 tabular-nums opacity-80">{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {profile.data && !profile.data.skills.length && profile.data.years_experience == null && (
+        <div className="mb-4 rounded-2xl border border-primary/40 bg-primary-soft p-3 text-sm">
+          📄 <Link to="/settings" className="font-medium text-primary underline">Upload your CV</Link> to see a match grade on every job.
+        </div>
+      )}
 
       {isNew && (
         <div className="card mb-4 p-4">

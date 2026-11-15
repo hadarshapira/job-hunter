@@ -22,6 +22,17 @@ export const WORK_MODES: { value: WorkMode; label: string }[] = [
   { value: 'unknown', label: 'Unknown' },
 ]
 
+export const SOURCES: { value: string; label: string; searchable: boolean; hint: string }[] = [
+  { value: 'linkedin', label: 'LinkedIn', searchable: true, hint: "LinkedIn's public job search in Israel: every title you look for, past week, with full descriptions" },
+  { value: 'jsearch', label: 'Web search', searchable: true, hint: 'Google for Jobs: Indeed, Glassdoor, company sites and some LinkedIn (limited monthly quota)' },
+  { value: 'greenhouse', label: 'Greenhouse', searchable: true, hint: 'Career pages of companies that use Greenhouse' },
+  { value: 'lever', label: 'Lever', searchable: true, hint: 'Career pages of companies that use Lever' },
+  { value: 'ashby', label: 'Ashby', searchable: true, hint: 'Career pages of companies that use Ashby' },
+  { value: 'link', label: 'Your links', searchable: false, hint: '' },
+  { value: 'manual', label: 'Added by you', searchable: false, hint: '' },
+]
+export const sourceLabel = (s: string) => SOURCES.find((x) => x.value === s)?.label ?? s
+
 export interface JobEvent { id: number; kind: string; text: string; created_at: string }
 
 export interface JobSummary {
@@ -38,6 +49,7 @@ export interface JobSummary {
   applied_at: string | null
   follow_up_on: string | null
   distance_km: number | null
+  match_score: number | null
   created_at: string
   updated_at: string
 }
@@ -47,7 +59,30 @@ export interface Job extends JobSummary {
   notes: string
   contact: string
   parse_issues: string
+  match: Match | null
+  match_at: string | null
   events: JobEvent[]
+}
+
+export interface MatchPart { key: string; label: string; weight: number; score: number | null; detail: string }
+export interface MatchSkill { skill: string; need: 'required' | 'nice'; status: 'have' | 'similar' | 'missing'; via: string | null }
+export interface Match {
+  score: number | null
+  parts: MatchPart[]
+  skills: MatchSkill[]
+  required_years: number | null
+  your_years: number | null
+  notes: string[]
+}
+
+export interface Profile {
+  skills: string[]
+  years_experience: number | null
+  cv_filename: string
+  cv_uploaded_at: string | null
+  cv_years_guess: number | null
+  known_skills: string[]
+  rescored: number | null
 }
 
 export interface SearchSettings {
@@ -61,6 +96,7 @@ export interface SearchSettings {
   title_keywords: string[]
   exclude_keywords: string[]
   senior_only: boolean
+  sources: string[]
 }
 
 export interface Company { id: number; ats: string; slug: string; name: string; mine: boolean; ok: boolean; last_error: string }
@@ -73,6 +109,10 @@ export interface CollectStatus {
   last_errors: string[]
   jsearch_enabled: boolean
   jsearch_quota_left: number | null
+  last_stats: {
+    sources: Record<string, Partial<Record<'found' | 'added' | 'already_have' | 'title' | 'location' | 'duplicate', number>>>
+    linkedin: { linkedin_found?: number; linkedin_title_skip?: number; linkedin_read?: number; linkedin_deferred?: number }
+  } | null
 }
 
 export interface Stats {
@@ -91,7 +131,8 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
     credentials: 'include',
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+    // FormData (file upload) sets its own multipart Content-Type
+    headers: { ...(typeof init.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
   })
   if (res.status === 401) throw new AuthError('Not logged in')
   if (!res.ok) {
@@ -126,11 +167,19 @@ export const api = {
     req<User>('/auth/signup', { method: 'POST', body: json({ email, password, name }) }),
   google: (credential: string) => req<User>('/auth/google', { method: 'POST', body: json({ credential }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
-  jobs: (params: { status?: Status[]; q?: string } = {}) => {
+  jobs: (params: { status?: Status[]; q?: string; sort?: 'recent' | 'match'; source?: string } = {}) => {
     const sp = new URLSearchParams()
     params.status?.forEach((s) => sp.append('status', s))
     if (params.q) sp.set('q', params.q)
+    if (params.sort) sp.set('sort', params.sort)
+    if (params.source) sp.set('source', params.source)
     return req<JobSummary[]>(`/jobs?${sp}`)
+  },
+  jobSources: (params: { status?: Status[]; q?: string } = {}) => {
+    const sp = new URLSearchParams()
+    params.status?.forEach((s) => sp.append('status', s))
+    if (params.q) sp.set('q', params.q)
+    return req<Record<string, number>>(`/jobs/sources?${sp}`)
   },
   job: (id: number) => req<Job>(`/jobs/${id}`),
   createJob: (body: Partial<Job>) => req<Job>('/jobs', { method: 'POST', body: json(body) }),
@@ -148,6 +197,14 @@ export const api = {
   addCompany: (board: string, name = '') => req<Company>('/companies', { method: 'POST', body: json({ board, name }) }),
   removeCompany: (id: number) => req<void>(`/companies/${id}`, { method: 'DELETE' }),
   collectStatus: () => req<CollectStatus>('/collect'),
+  rematch: (id: number) => req<Job>(`/jobs/${id}/match`, { method: 'POST' }),
+  profile: () => req<Profile>('/profile'),
+  saveProfile: (p: Pick<Profile, 'skills' | 'years_experience'>) => req<Profile>('/profile', { method: 'PUT', body: json(p) }),
+  uploadCv: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return req<Profile>('/profile/cv', { method: 'POST', body: fd })
+  },
   collectNow: () => req<{ started: boolean; detail?: string }>('/collect', { method: 'POST' }),
 }
 

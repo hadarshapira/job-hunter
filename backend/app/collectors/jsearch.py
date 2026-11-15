@@ -76,7 +76,7 @@ def to_posting(j: dict) -> Posting:
 
 
 async def search(session: AsyncSession, client: httpx.AsyncClient, query: str, *, force: bool = False) -> list[Posting]:
-    """Postings for "<query> in Israel" from the past 3 days, using the shared cache when fresh."""
+    """Postings for "<query> in Israel" from the past week, using the shared cache when fresh."""
     settings = get_settings()
     key = query.strip().lower()
     cached = await session.get(SearchCache, key)
@@ -93,7 +93,7 @@ async def search(session: AsyncSession, client: httpx.AsyncClient, query: str, *
 
     r = await client.get(
         URL,
-        params={"query": f"{query} in Israel", "country": "il", "date_posted": "3days", "page": 1, "num_pages": 1},
+        params={"query": f"{query} in Israel", "country": "il", "date_posted": "week", "page": 1, "num_pages": 1},
         headers={"x-rapidapi-key": settings.jsearch_api_key, "x-rapidapi-host": HOST},
         timeout=40,
     )

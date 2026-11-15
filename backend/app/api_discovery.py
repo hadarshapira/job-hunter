@@ -13,8 +13,8 @@ from app.collectors import boards
 from app.collectors.jsearch import quota_remaining
 from app.config import get_settings
 from app.db import SessionLocal, get_session
-from app.models import CollectionRun, Company, User
-from app.services import ingest
+from app.models import COLLECT_SOURCES, CollectionRun, Company, User
+from app.services import ingest, matching
 from app.services.geo import USER_AGENT, geocode
 
 router = APIRouter(prefix="/api")
@@ -29,6 +29,7 @@ class SettingsIn(BaseModel):
     title_keywords: list[str] = Field(default_factory=list, max_length=15)
     exclude_keywords: list[str] = Field(default_factory=list, max_length=30)
     senior_only: bool = False
+    sources: list[str] = Field(default_factory=lambda: list(COLLECT_SOURCES))
 
 
 class SettingsOut(SettingsIn):
@@ -58,6 +59,7 @@ async def _out(session: AsyncSession, s) -> SettingsOut:
     return SettingsOut(
         home_label=s.home_label, work_modes=s.work_modes, max_km_onsite=s.max_km_onsite, max_km_hybrid=s.max_km_hybrid,
         title_keywords=s.title_keywords, exclude_keywords=s.exclude_keywords, senior_only=s.senior_only,
+        sources=ingest.enabled_sources(s),
         home_found=label, home_lat=s.home_lat, home_lon=s.home_lon,
     )
 
@@ -74,6 +76,9 @@ async def put_user_settings(body: SettingsIn, user: User = Depends(current_user)
     modes = [m for m in body.work_modes if m in MODES]
     if not modes:
         raise HTTPException(422, "Choose at least one work mode")
+    sources = [x for x in COLLECT_SOURCES if x in body.sources]
+    if not sources:
+        raise HTTPException(422, "Choose at least one place to search")
     titles = _clean_list(body.title_keywords)
     if not titles:
         raise HTTPException(422, "Add at least one job title to search for")
@@ -89,6 +94,8 @@ async def put_user_settings(body: SettingsIn, user: User = Depends(current_user)
             s.home_lat, s.home_lon = hit[0], hit[1]
     s.work_modes, s.max_km_onsite, s.max_km_hybrid = modes, body.max_km_onsite, body.max_km_hybrid
     s.title_keywords, s.exclude_keywords, s.senior_only = titles, _clean_list(body.exclude_keywords), body.senior_only
+    s.sources = sources
+    await matching.rescore_all(session, user.id)
     await session.commit()
     return await _out(session, s)
 
@@ -157,6 +164,7 @@ class CollectStatus(BaseModel):
     last_errors: list[str]
     jsearch_enabled: bool
     jsearch_quota_left: int | None
+    last_stats: dict | None = None  # per source: found / added / skipped and why
 
 
 @router.get("/collect", response_model=CollectStatus)
@@ -173,6 +181,7 @@ async def collect_status(user: User = Depends(current_user), session: AsyncSessi
         last_errors=[e for e in (run.errors.split("\n") if run and run.errors else []) if e],
         jsearch_enabled=bool(get_settings().jsearch_api_key),
         jsearch_quota_left=await quota_remaining(session),
+        last_stats=run.stats if run and run.finished_at else None,
     )
 
 

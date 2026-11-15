@@ -1,5 +1,6 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,6 +21,7 @@ from app.schemas import (
     NoteCreate,
     Stats,
 )
+from app.services import matching
 from app.services.dedup import dedup_key
 from app.services.importer import fetch_and_parse
 
@@ -61,16 +63,40 @@ def _apply_status(job: Job, new: Status) -> None:
 async def list_jobs(
     status: list[Status] | None = Query(None),
     q: str | None = None,
+    sort: Literal["recent", "match"] = "recent",
+    source: list[str] | None = Query(None),
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    stmt = select(Job).where(Job.user_id == user.id).order_by(Job.updated_at.desc())
+    order = [Job.updated_at.desc()]
+    if sort == "match":
+        order.insert(0, Job.match_score.desc().nulls_last())
+    stmt = select(Job).where(Job.user_id == user.id).order_by(*order)
+    if status:
+        stmt = stmt.where(Job.status.in_([s.value for s in status]))
+    if source:
+        stmt = stmt.where(Job.source.in_(source))
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(func.lower(Job.title).like(like) | func.lower(Job.company).like(like))
+    return (await session.scalars(stmt.limit(500))).all()
+
+
+@router.get("/jobs/sources", response_model=dict[str, int])
+async def job_sources(
+    status: list[Status] | None = Query(None),
+    q: str | None = None,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """How many of the user's jobs came from each source (same status/search filters as the list)."""
+    stmt = select(Job.source, func.count()).where(Job.user_id == user.id).group_by(Job.source)
     if status:
         stmt = stmt.where(Job.status.in_([s.value for s in status]))
     if q:
         like = f"%{q.lower()}%"
         stmt = stmt.where(func.lower(Job.title).like(like) | func.lower(Job.company).like(like))
-    return (await session.scalars(stmt.limit(500))).all()
+    return dict((await session.execute(stmt)).all())
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)
@@ -85,6 +111,7 @@ async def create_job(body: JobCreate, user: User = Depends(current_user), sessio
         events=[Event(kind="created", text="Added manually")],
     )
     _apply_status(job, body.status)
+    await matching.apply_one(session, job)
     session.add(job)
     await session.commit()
     return await _load(session, user, job.id)
@@ -123,6 +150,7 @@ async def import_job(body: ImportRequest, user: User = Depends(current_user), se
         status=Status.saved,
         events=[Event(kind="created", text=f"Imported from {httpx.URL(url).host}")],
     )
+    await matching.apply_one(session, job)
     session.add(job)
     await session.commit()
     _log_issues(url, parsed)
@@ -158,6 +186,7 @@ async def reimport_job(job_id: int, user: User = Depends(current_user), session:
         changed.append("work_mode")
     job.parse_issues = "\n".join(parsed.issues)
     job.dedup_key = dedup_key(job.title, job.company, job.location)
+    await matching.apply_one(session, job)
     job.events.append(Event(kind="note", text="Re-imported: " + (", ".join(changed) + " updated" if changed else "no changes")))
     job.updated_at = datetime.now(timezone.utc)
     await session.commit()
@@ -183,6 +212,8 @@ async def update_job(
         job.dedup_key = dedup_key(job.title, job.company, job.location)
     if new_status:
         _apply_status(job, Status(new_status))
+    if {"title", "description", "work_mode"} & changes.keys():
+        await matching.apply_one(session, job)
     job.updated_at = datetime.now(timezone.utc)
     await session.commit()
     return await _load(session, user, job_id)

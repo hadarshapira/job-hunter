@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { api, STATUSES, WORK_MODES, type Job } from '../api'
-import { Empty, StatusPill } from '../components'
+import { api, STATUSES, statusInfo, WORK_MODES, type Job } from '../api'
+import { Empty, MatchBadge, matchWord } from '../components'
+
+// One-tap move to the usual next stage
+const NEXT_STEP: Partial<Record<Job['status'], { to: Job['status']; label: string }>> = {
+  new: { to: 'saved', label: '★ Save' },
+  saved: { to: 'applied', label: '✓ Mark as applied' },
+  applied: { to: 'screening', label: '→ Screening' },
+  screening: { to: 'interview', label: '→ Interview' },
+  interview: { to: 'offer', label: '🎉 Got an offer' },
+}
 
 const EVENT_ICON: Record<string, string> = { created: '✨', status: '➜', note: '📝', email: '✉️' }
 
@@ -104,7 +113,18 @@ export default function JobDetail() {
                 <h1 className="text-xl font-semibold">{j.title}</h1>
                 <p className="text-muted">{[j.company, j.location].filter(Boolean).join(' · ')}</p>
               </div>
-              <StatusPill status={j.status} />
+              <label className="shrink-0">
+                <span className="sr-only">Status</span>
+                <select
+                  className={`pill cursor-pointer appearance-none border-0 py-1.5 pl-3 pr-7 text-sm font-medium ${statusInfo(j.status).tone}`}
+                  style={{ backgroundImage: 'linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%)', backgroundPosition: 'right 12px center, right 8px center', backgroundSize: '4px 4px', backgroundRepeat: 'no-repeat' }}
+                  value={j.status}
+                  disabled={update.isPending}
+                  onChange={(e) => update.mutate({ status: e.target.value as Job['status'] })}
+                >
+                  {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-sm">
               {j.work_mode !== 'unknown' && <span className="pill bg-surface-2">{WORK_MODES.find((m) => m.value === j.work_mode)?.label}</span>}
@@ -112,7 +132,17 @@ export default function JobDetail() {
               {j.posted_at && <span className="pill bg-surface-2">Posted {j.posted_at}</span>}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {j.url && <a href={j.url} target="_blank" rel="noreferrer" className="btn-primary">Open posting ↗</a>}
+              {NEXT_STEP[j.status] && (
+                <button className="btn-primary" disabled={update.isPending} onClick={() => update.mutate({ status: NEXT_STEP[j.status]!.to })}>
+                  {NEXT_STEP[j.status]!.label}
+                </button>
+              )}
+              {j.status !== 'archived' && j.status !== 'rejected' && (
+                <button className="btn-ghost" disabled={update.isPending} onClick={() => update.mutate({ status: j.status === 'new' ? 'archived' : 'rejected' })}>
+                  {j.status === 'new' ? '✕ Not for me' : '✕ Rejected'}
+                </button>
+              )}
+              {j.url && <a href={j.url} target="_blank" rel="noreferrer" className={NEXT_STEP[j.status] ? 'btn-ghost' : 'btn-primary'}>Open posting ↗</a>}
               <button className="btn-ghost" onClick={() => setEditing(true)}>Edit</button>
               {j.url && !j.parse_issues && (
                 <button className="btn-ghost" disabled={reimport.isPending} onClick={() => reimport.mutate()}>
@@ -124,13 +154,9 @@ export default function JobDetail() {
         )}
       </div>
 
-      <div className="card grid gap-3 p-4 sm:grid-cols-3">
-        <label className="text-sm">
-          <span className="mb-1 block text-muted">Status</span>
-          <select className="input" value={j.status} onChange={(e) => update.mutate({ status: e.target.value as Job['status'] })}>
-            {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </label>
+      <MatchCard job={j} onSaved={onSaved} />
+
+      <div className="card grid gap-3 p-4 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block text-muted">Follow up on</span>
           <input className="input" type="date" value={j.follow_up_on ?? ''} onChange={(e) => update.mutate({ follow_up_on: e.target.value || null })} />
@@ -145,7 +171,7 @@ export default function JobDetail() {
             onBlur={(e) => e.target.value !== j.contact && update.mutate({ contact: e.target.value })}
           />
         </label>
-        {update.isError && <p className="text-sm text-danger sm:col-span-3">{update.error.message}</p>}
+        {update.isError && <p className="text-sm text-danger sm:col-span-2">{update.error.message}</p>}
       </div>
 
       {j.description && (
@@ -188,6 +214,117 @@ export default function JobDetail() {
       >
         Delete job
       </button>
+    </div>
+  )
+}
+
+const SKILL_STATUS = {
+  have: { icon: '✓', label: 'You have it', cls: 'text-ok' },
+  similar: { icon: '≈', label: 'Similar', cls: 'text-warn' },
+  missing: { icon: '✗', label: 'Missing', cls: 'text-danger' },
+} as const
+
+function MatchCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) {
+  const recalc = useMutation({ mutationFn: () => api.rematch(job.id), onSuccess: onSaved })
+  const m = job.match
+  const recalcButton = (
+    <button className="btn-ghost shrink-0" disabled={recalc.isPending} onClick={() => recalc.mutate()}>
+      {recalc.isPending ? 'Calculating…' : m ? '↻ Recalculate' : 'Calculate match'}
+    </button>
+  )
+
+  if (!m) {
+    return (
+      <div className="card grid gap-3 p-4">
+        <h2 className="font-medium">How well you match</h2>
+        <p className="text-sm text-muted">
+          Add your CV and skills in <Link to="/settings" className="text-primary underline">Settings</Link> to see a match grade
+          and which skills fit or are missing.
+        </p>
+        <div>{recalcButton}</div>
+        {recalc.isSuccess && !recalc.data.match && <p className="text-sm text-warn">No profile yet. Upload your CV in Settings first.</p>}
+        {recalc.isError && <p className="text-sm text-danger">{recalc.error.message}</p>}
+      </div>
+    )
+  }
+
+  const count = (s: keyof typeof SKILL_STATUS) => m.skills.filter((r) => r.status === s).length
+  const req = m.skills.filter((r) => r.need === 'required')
+  return (
+    <div className="card grid gap-4 p-4">
+      <div className="flex items-center gap-4">
+        <MatchBadge score={m.score} large />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-medium">{m.score != null ? matchWord(m.score) : 'Not enough information'}</h2>
+          <p className="text-sm text-muted">
+            {req.length > 0
+              ? `You have ${req.filter((r) => r.status === 'have').length} of ${req.length} required skills`
+              : 'Based on your CV, skills and search settings'}
+          </p>
+        </div>
+        {recalcButton}
+      </div>
+      {recalc.isError && <p className="text-sm text-danger">{recalc.error.message}</p>}
+
+      <div className="grid gap-2.5">
+        {m.parts.map((p) => (
+          <div key={p.key} className="grid gap-1 text-sm">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-medium">{p.label}</span>
+              <span className="tabular-nums text-muted">{p.score ?? '–'}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+              {p.score != null && (
+                <div className={`h-full rounded-full ${p.score >= 75 ? 'bg-ok' : p.score >= 55 ? 'bg-warn' : 'bg-danger'}`} style={{ width: `${p.score}%` }} />
+              )}
+            </div>
+            <span className="text-xs text-muted">{p.detail}</span>
+          </div>
+        ))}
+      </div>
+
+      {m.skills.length > 0 && (
+        <div>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-medium">Skills this job asks for</h3>
+            <span className="text-xs text-muted">
+              <span className="text-ok">✓ {count('have')} fit</span> · <span className="text-warn">≈ {count('similar')} similar</span> ·{' '}
+              <span className="text-danger">✗ {count('missing')} missing</span>
+            </span>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-line">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-2 text-left text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Skill</th>
+                  <th className="px-3 py-2 font-medium">Needed</th>
+                  <th className="px-3 py-2 font-medium">Your CV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.skills.map((r) => {
+                  const st = SKILL_STATUS[r.status]
+                  return (
+                    <tr key={r.skill} className="border-t border-line">
+                      <td className="px-3 py-2">{r.skill}</td>
+                      <td className="px-3 py-2 text-muted">{r.need === 'required' ? 'Required' : 'Nice to have'}</td>
+                      <td className={`px-3 py-2 ${st.cls}`}>
+                        {st.icon} {r.status === 'similar' && r.via ? `You know ${r.via}` : st.label}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {m.notes.map((n) => <p key={n} className="text-xs text-muted">{n}</p>)}
+      <p className="text-xs text-muted">
+        Grade = skills 50% · experience 15% · seniority 15% · role 10% · location 10%. Parts with no data are left out.
+        Edit your skills in <Link to="/settings" className="text-primary underline">Settings</Link>.
+      </p>
     </div>
   )
 }
