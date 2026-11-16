@@ -30,10 +30,11 @@ export const SOURCES: { value: string; label: string; searchable: boolean; hint:
   { value: 'ashby', label: 'Ashby', searchable: true, hint: 'Career pages of companies that use Ashby' },
   { value: 'link', label: 'Your links', searchable: false, hint: '' },
   { value: 'manual', label: 'Added by you', searchable: false, hint: '' },
+  { value: 'email', label: 'From Gmail', searchable: false, hint: '' },
 ]
 export const sourceLabel = (s: string) => SOURCES.find((x) => x.value === s)?.label ?? s
 
-export interface JobEvent { id: number; kind: string; text: string; created_at: string }
+export interface JobEvent { id: number; kind: string; text: string; url: string | null; created_at: string }
 
 export interface JobSummary {
   id: number
@@ -125,6 +126,32 @@ export interface Stats {
   follow_ups_due: number
 }
 
+export interface GmailStatus {
+  configured: boolean
+  connected: boolean
+  email: string
+  connected_at: string | null
+  last_sync_at: string | null
+  last_error: string
+  label: string
+}
+export type GmailKind = 'confirmation' | 'rejection' | 'interview'
+export interface GmailMessage {
+  id: number
+  sender: string
+  subject: string
+  received_at: string | null
+  kind: GmailKind
+  action: 'status_changed' | 'created_job' | 'no_change' | 'unmatched' | 'undone'
+  job_id: number | null
+  job_title: string
+  job_company: string
+  company_guess: string
+  title_guess: string
+  moved: boolean
+  link: string
+}
+
 export class AuthError extends Error {}
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -205,6 +232,12 @@ export const api = {
     fd.append('file', file)
     return req<Profile>('/profile/cv', { method: 'POST', body: fd })
   },
+  gmailStatus: () => req<GmailStatus>('/gmail/status'),
+  gmailSync: () => req<{ checked: number; job_emails: number; updated: number; unmatched: number; error: string }>('/gmail/sync', { method: 'POST' }),
+  gmailDisconnect: () => req<void>('/gmail/disconnect', { method: 'POST' }),
+  gmailMessages: () => req<GmailMessage[]>('/gmail/messages'),
+  gmailAssign: (id: number, jobId: number) => req<GmailMessage>(`/gmail/messages/${id}/assign`, { method: 'POST', body: json({ job_id: jobId }) }),
+  gmailUndo: (id: number) => req<GmailMessage>(`/gmail/messages/${id}/undo`, { method: 'POST' }),
   collectNow: () => req<{ started: boolean; detail?: string }>('/collect', { method: 'POST' }),
 }
 

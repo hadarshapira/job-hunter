@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { api, SOURCES, type Profile, type SearchSettings } from '../api'
+import { useSearchParams } from 'react-router-dom'
+import { api, SOURCES, type GmailMessage, type JobSummary, type Profile, type SearchSettings } from '../api'
 import { Empty, PageTitle } from '../components'
 import { FindJobsButton } from './Jobs'
 
@@ -182,6 +183,8 @@ export default function SettingsPage() {
         <FindJobsButton />
       </section>
 
+      <GmailSection />
+
       <Companies />
     </>
   )
@@ -315,5 +318,159 @@ function ProfileSection() {
         {result?.rescored != null && !dirty && <span className="text-sm text-ok">✓ Saved. {result.rescored} job{result.rescored === 1 ? '' : 's'} re-graded.</span>}
       </div>
     </section>
+  )
+}
+
+const CONNECT_RESULT: Record<string, [string, boolean]> = {
+  connected: ['Gmail connected. New job emails will be handled from now on.', true],
+  cancelled: ['Gmail was not connected (cancelled in Google).', false],
+  missing_permission: ["Google didn't give permission to manage your email. Connect again and leave the Gmail box ticked.", false],
+  expired: ['The connection took too long. Please try again.', false],
+  wrong_user: ['You were signed in to JobHunter as someone else. Please try again.', false],
+  failed: ['Google refused the connection. Please try again.', false],
+}
+
+const KIND_LABEL: Record<GmailMessage['kind'], string> = {
+  confirmation: '📨 Application received',
+  rejection: '✕ Rejection',
+  interview: '🎉 Interview',
+}
+
+function actionText(m: GmailMessage, label: string) {
+  const job = m.job_id ? `${m.job_title} · ${m.job_company}` : ''
+  const moved = m.moved ? ` · moved to ${label}` : ''
+  switch (m.action) {
+    case 'status_changed': return `Updated ${job}${moved}`
+    case 'created_job': return `Added ${job} as Applied${moved}`
+    case 'no_change': return `${job}: status already further along${moved}`
+    case 'undone': return 'Undone'
+    default: return 'Not sure which job: pick it below'
+  }
+}
+
+function GmailSection() {
+  const qc = useQueryClient()
+  const [params, setParams] = useSearchParams()
+  const result = params.get('gmail')
+  const status = useQuery({ queryKey: ['gmail'], queryFn: api.gmailStatus })
+  const connected = !!status.data?.connected
+  const messages = useQuery({ queryKey: ['gmail-messages'], queryFn: api.gmailMessages, enabled: connected })
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['gmail'] })
+    qc.invalidateQueries({ queryKey: ['gmail-messages'] })
+    qc.invalidateQueries({ queryKey: ['jobs'] })
+    qc.invalidateQueries({ queryKey: ['job'] })
+  }
+  const sync = useMutation({ mutationFn: api.gmailSync, onSuccess: refresh })
+  const disconnect = useMutation({ mutationFn: api.gmailDisconnect, onSuccess: refresh })
+  const undo = useMutation({ mutationFn: api.gmailUndo, onSuccess: refresh })
+
+  useEffect(() => {
+    if (result) document.getElementById('gmail')?.scrollIntoView({ behavior: 'smooth' })
+  }, [result])
+
+  if (status.isPending) return null
+  if (status.isError) return <section className="card mt-6 p-4 text-sm text-danger">{status.error.message}</section>
+  const s = status.data
+  const notice = result ? CONNECT_RESULT[result] : undefined
+
+  return (
+    <section id="gmail" className="card mt-6 grid gap-3 p-4">
+      <div>
+        <h2 className="font-medium">Gmail</h2>
+        <p className="text-sm text-muted">
+          Reads new mail in your Inbox every 10 minutes. &ldquo;We got your application&rdquo; marks the job Applied and rejections mark it Rejected; both
+          emails move to the <b>{s.label}</b> label. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
+        </p>
+      </div>
+      {notice && (
+        <div className={`flex items-start justify-between gap-2 rounded-xl p-3 text-sm ${notice[1] ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}`}>
+          <span>{notice[0]}</span>
+          <button type="button" className="shrink-0 text-muted" onClick={() => { params.delete('gmail'); setParams(params, { replace: true }) }}>✕</button>
+        </div>
+      )}
+      {!s.configured ? (
+        <p className="text-sm text-warn">Gmail isn&rsquo;t set up on the server yet (GOOGLE_CLIENT_SECRET in .env).</p>
+      ) : !connected ? (
+        <a href="/api/gmail/connect" className="btn-primary w-fit">Connect Gmail</a>
+      ) : (
+        <>
+          <p className="text-sm">
+            ✓ Connected as <b>{s.email}</b>
+            <span className="text-muted"> · last check {s.last_sync_at ? new Date(s.last_sync_at).toLocaleString() : 'not yet'}</span>
+          </p>
+          {s.last_error && (
+            <p className="text-sm text-danger">
+              {s.last_error} {s.last_error.includes('Connect Gmail again') && <a href="/api/gmail/connect" className="underline">Connect again</a>}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-primary" disabled={sync.isPending} onClick={() => sync.mutate()}>
+              {sync.isPending ? 'Checking…' : 'Check now'}
+            </button>
+            <button type="button" className="btn-ghost" disabled={disconnect.isPending}
+              onClick={() => confirm('Disconnect Gmail? The app will stop reading your email.') && disconnect.mutate()}>
+              Disconnect
+            </button>
+            {sync.data && !sync.data.error && (
+              <span className="text-sm text-muted">
+                {sync.data.job_emails ? `${sync.data.job_emails} job email${sync.data.job_emails > 1 ? 's' : ''} found` : 'No new job emails'}
+              </span>
+            )}
+          </div>
+          {sync.isError && <p className="text-sm text-danger">{sync.error.message}</p>}
+          {!!messages.data?.length && (
+            <div className="grid gap-2">
+              <h3 className="text-sm font-medium">Recent job emails</h3>
+              <ul className="grid gap-2">
+                {messages.data.map((m) => (
+                  <li key={m.id} className="rounded-xl border border-line p-3 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                      <span className="font-medium">{KIND_LABEL[m.kind]}</span>
+                      <span className="text-xs text-muted">{m.received_at ? new Date(m.received_at).toLocaleString() : ''}</span>
+                    </div>
+                    <div className="truncate">&ldquo;{m.subject}&rdquo;</div>
+                    <div className="truncate text-xs text-muted">{m.sender}</div>
+                    <div className={`mt-1 text-xs ${m.action === 'unmatched' ? 'text-warn' : 'text-muted'}`}>{actionText(m, s.label)}</div>
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs">
+                      {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-primary underline">Open in Gmail</a>}
+                      {['status_changed', 'created_job', 'no_change'].includes(m.action) && (
+                        <button type="button" className="text-primary underline" disabled={undo.isPending}
+                          onClick={() => confirm('Undo? The email goes back to the Inbox and the job goes back to its old status.') && undo.mutate(m.id)}>
+                          Undo
+                        </button>
+                      )}
+                    </div>
+                    {m.action === 'unmatched' && <AssignJob message={m} onDone={refresh} />}
+                  </li>
+                ))}
+              </ul>
+              {undo.isError && <p className="text-sm text-danger">{undo.error.message}</p>}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+function AssignJob({ message, onDone }: { message: GmailMessage; onDone: () => void }) {
+  const jobs = useQuery({ queryKey: ['jobs', 'all-for-email'], queryFn: () => api.jobs() })
+  const [jobId, setJobId] = useState('')
+  const assign = useMutation({ mutationFn: () => api.gmailAssign(message.id, Number(jobId)), onSuccess: onDone })
+  const guess = message.company_guess.toLowerCase()
+  const first = (j: JobSummary) => (guess && j.company.toLowerCase().includes(guess) ? 0 : 1)
+  const list = [...(jobs.data ?? [])].sort((a, b) => first(a) - first(b) || a.company.localeCompare(b.company))
+  return (
+    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+      <select className="input min-w-0 flex-1" value={jobId} onChange={(e) => setJobId(e.target.value)}>
+        <option value="">Which job is this about?</option>
+        {list.map((j) => <option key={j.id} value={j.id}>{j.company} · {j.title}</option>)}
+      </select>
+      <button type="button" className="btn-primary shrink-0" disabled={!jobId || assign.isPending} onClick={() => assign.mutate()}>
+        {assign.isPending ? 'Saving…' : 'Link to job'}
+      </button>
+      {assign.isError && <p className="text-sm text-danger">{assign.error.message}</p>}
+    </div>
   )
 }

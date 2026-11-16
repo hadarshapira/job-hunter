@@ -10,6 +10,7 @@ class EventOut(BaseModel):
     id: int
     kind: str
     text: str
+    url: str | None = None
     created_at: datetime
 
 

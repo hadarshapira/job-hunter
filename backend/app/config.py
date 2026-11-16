@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     # OAuth client ID from Google Cloud Console (empty = Google sign-in hidden)
     google_client_id: str = ""
+    # Same Web client's secret; needed only for Gmail tracking (empty = Gmail hidden)
+    google_client_secret: str = ""
+    # Address Google sends Gmail sign-in back to, e.g. https://myhost.ts.net (empty = taken from the request)
+    public_url: str = ""
     signup_enabled: bool = True
     jsearch_api_key: str = ""
     # Reuse a JSearch result for this long before spending another request on the same query

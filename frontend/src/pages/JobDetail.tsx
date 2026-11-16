@@ -201,6 +201,7 @@ export default function JobDetail() {
               <span className="w-5 shrink-0 text-center">{EVENT_ICON[ev.kind] ?? '•'}</span>
               <div className="min-w-0">
                 <div className="whitespace-pre-line">{ev.text}</div>
+                {ev.url && <a href={ev.url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Open in Gmail</a>}
                 <div className="text-xs text-muted">{new Date(ev.created_at).toLocaleString()}</div>
               </div>
             </li>

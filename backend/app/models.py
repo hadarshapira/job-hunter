@@ -197,6 +197,46 @@ class Event(Base):
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(30))  # created | status | note | email
     text: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str | None] = mapped_column(Text)  # e.g. the email in Gmail
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     job: Mapped[Job] = relationship(back_populates="events")
+
+
+class GmailAccount(Base):
+    """A user's Gmail connection. The refresh token is stored encrypted (services/gmail/oauth.py)."""
+
+    __tablename__ = "gmail_accounts"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), default="")
+    refresh_token: Mapped[str] = mapped_column(Text)  # encrypted
+    history_id: Mapped[str | None] = mapped_column(String(40))  # where the last check stopped
+    label_id: Mapped[str | None] = mapped_column(String(100))  # Gmail id of the "Job search" label
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class GmailMessage(Base):
+    """A job-related email the app acted on (other mail is never stored)."""
+
+    __tablename__ = "gmail_messages"
+    __table_args__ = (UniqueConstraint("user_id", "gmail_id", name="uq_gmail_user_message"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    gmail_id: Mapped[str] = mapped_column(String(40))
+    thread_id: Mapped[str] = mapped_column(String(40), default="", index=True)
+    sender: Mapped[str] = mapped_column(String(320), default="")
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(20))  # confirmation | rejection | interview
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    # status_changed | created_job | no_change | unmatched | undone
+    action: Mapped[str] = mapped_column(String(20))
+    previous_status: Mapped[str | None] = mapped_column(String(20))
+    moved: Mapped[bool] = mapped_column(Boolean, default=False)  # moved out of the Inbox to the label
+    company_guess: Mapped[str] = mapped_column(String(200), default="")
+    title_guess: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
