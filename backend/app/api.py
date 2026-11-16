@@ -6,7 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.auth import current_user
 from app.db import get_session
@@ -59,6 +59,20 @@ def _apply_status(job: Job, new: Status) -> None:
         job.follow_up_on = None
 
 
+def _filtered(stmt, status: list[Status] | None, q: str | None):
+    """Status and title/company search filters, shared by the job list and its source counts."""
+    if status:
+        stmt = stmt.where(Job.status.in_([s.value for s in status]))
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(func.lower(Job.title).like(like) | func.lower(Job.company).like(like))
+    return stmt
+
+
+# The list shows cards only: skip the long description and match details, which can be ~5 KB per job
+_SUMMARY_COLUMNS = [getattr(Job, f) for f in JobSummary.model_fields]
+
+
 @router.get("/jobs", response_model=list[JobSummary])
 async def list_jobs(
     status: list[Status] | None = Query(None),
@@ -71,14 +85,10 @@ async def list_jobs(
     order = [Job.updated_at.desc()]
     if sort == "match":
         order.insert(0, Job.match_score.desc().nulls_last())
-    stmt = select(Job).where(Job.user_id == user.id).order_by(*order)
-    if status:
-        stmt = stmt.where(Job.status.in_([s.value for s in status]))
+    stmt = select(Job).options(load_only(*_SUMMARY_COLUMNS)).where(Job.user_id == user.id).order_by(*order)
+    stmt = _filtered(stmt, status, q)
     if source:
         stmt = stmt.where(Job.source.in_(source))
-    if q:
-        like = f"%{q.lower()}%"
-        stmt = stmt.where(func.lower(Job.title).like(like) | func.lower(Job.company).like(like))
     return (await session.scalars(stmt.limit(500))).all()
 
 
@@ -91,12 +101,7 @@ async def job_sources(
 ):
     """How many of the user's jobs came from each source (same status/search filters as the list)."""
     stmt = select(Job.source, func.count()).where(Job.user_id == user.id).group_by(Job.source)
-    if status:
-        stmt = stmt.where(Job.status.in_([s.value for s in status]))
-    if q:
-        like = f"%{q.lower()}%"
-        stmt = stmt.where(func.lower(Job.title).like(like) | func.lower(Job.company).like(like))
-    return dict((await session.execute(stmt)).all())
+    return dict((await session.execute(_filtered(stmt, status, q))).all())
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)

@@ -89,15 +89,18 @@ def score(mail: Mail, job: Job, linked_thread_jobs: set[int]) -> int:
 def best_job(mail: Mail, kind: str, jobs: list[Job], linked_thread_jobs: set[int]) -> Job | None:
     """The one job the email is clearly about, or None when it's unclear."""
     scored = sorted(((score(mail, j, linked_thread_jobs), j) for j in jobs), key=lambda x: -x[0])
-    scored = [(s, j) for s, j in scored if s >= 3]
+    scored = [(s, j) for s, j in scored if s >= 3]  # 3 = at least the company was recognised
     if not scored:
         return None
     top = scored[0][0]
     tied = [j for s, j in scored if s == top]
     if len(tied) == 1:
+        # A clear winner: the only candidate, 2+ points ahead, or in an email thread already linked to it
         if len(scored) == 1 or top - scored[1][0] >= 2 or top >= 10:
             return tied[0]
-        tied = [j for s, j in scored if s >= top - 1]
+        tied = [j for s, j in scored if s >= top - 1]  # too close to call: treat near-ties as tied
+    # Several jobs at the same company: pick the one whose status fits the email (a rejection is
+    # about a job you applied to, not one you only saved). Still unclear -> None, the user assigns it.
     likely = [j for j in tied if j.status in _LIKELY[kind]]
     return likely[0] if len(likely) == 1 else None
 

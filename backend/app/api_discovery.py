@@ -13,9 +13,9 @@ from app.collectors import boards
 from app.collectors.jsearch import quota_remaining
 from app.config import get_settings
 from app.db import SessionLocal, get_session
-from app.models import COLLECT_SOURCES, CollectionRun, Company, User
+from app.models import COLLECT_SOURCES, CollectionRun, Company, GeoCache, User
 from app.services import ingest, matching
-from app.services.geo import USER_AGENT, geocode
+from app.services.geo import USER_AGENT, geocode, normalize_place
 
 router = APIRouter(prefix="/api")
 MODES = {"onsite", "hybrid", "remote"}
@@ -49,10 +49,7 @@ def _clean_list(items: list[str]) -> list[str]:
 
 
 async def _out(session: AsyncSession, s) -> SettingsOut:
-    from app.models import GeoCache
-    from app.services.geo import normalize_place
-
-    label = None
+    label = None  # the place name the map matched the home text to, e.g. "Ramat Gan, Tel Aviv District, Israel"
     if s.home_label and s.home_lat is not None:
         cached = await session.get(GeoCache, normalize_place(s.home_label))
         label = cached.label if cached else s.home_label

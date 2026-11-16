@@ -2,6 +2,8 @@
 
 Multi-user job-search PWA. Backend: FastAPI + Postgres (`backend/`). Frontend: React/TS PWA (`frontend/`). Everything runs in Docker.
 
+Docs: `README.md` (overview), `docs/workflows.md` (what each feature does, step by step), `docs/operations.md` (run, deploy, backup, troubleshoot), `backend/README.md` and `frontend/README.md` (code maps, how to add things), `docs/parsers.md` (job-link import). Keep them up to date when behaviour changes.
+
 ## Commands
 - Run tests: `docker compose build api -q && docker compose run --rm --no-deps api pytest -q`
 - Rebuild and restart: `docker compose up -d --build --wait`

@@ -1,8 +1,7 @@
-"""Import a job from any URL.
+"""Import a job from any URL, plus the ParsedJob type and text helpers every source shares.
 
-1. schema.org JobPosting (JSON-LD), used by Greenhouse, Lever, Comeet, LinkedIn public pages and most job boards.
-2. Fallback: page title + meta description, flagged as incomplete so the user can fill in the rest.
-   (Phase 3 adds local-AI extraction for this case.)
+Order (fetch_and_parse): site extractors (ATS APIs, LinkedIn) -> schema.org JobPosting JSON-LD ->
+page title + meta description (flagged incomplete) -> quality check. Details: docs/parsers.md.
 """
 
 import json

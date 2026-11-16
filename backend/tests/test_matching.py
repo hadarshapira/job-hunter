@@ -157,3 +157,15 @@ async def test_match_endpoint_is_per_user(authed, maker):
         await signup(other, "eve@example.com")
         assert (await other.post(f"/api/jobs/{job_id}/match")).status_code == 404
         assert (await other.get("/api/profile")).json()["skills"] == []
+
+
+def test_job_skills_cache_returns_a_fresh_dict():
+    # job_skills is cached; changing one result must not change what the next caller gets
+    first = sk.job_skills("Requirements\nPython and Spark")
+    first["Python"] = "nice"
+    assert sk.job_skills("Requirements\nPython and Spark") == {"Python": "required", "Spark": "required"}
+
+
+def test_plain_aliases_still_need_word_boundaries():
+    assert sk.find_skills("We use node.js and Tableau") == ["TypeScript/JavaScript", "BI tools"]
+    assert sk.find_skills("tableaux, sparkle, pythonic") == []

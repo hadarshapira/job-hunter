@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+"""FastAPI app: wires the routers together. Run by uvicorn in the "api" container (see backend/Dockerfile)."""
 
 import logging
+
+from fastapi import FastAPI
 
 from app import api, api_discovery, api_gmail, api_profile, auth
 

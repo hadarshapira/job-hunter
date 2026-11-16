@@ -117,6 +117,8 @@ def _location_part(job: Job, s: UserSettings | None) -> dict | None:
         return {"score": 70, "detail": f"{mode}, distance unknown"}
     limit = s.max_km_onsite if job.work_mode == "onsite" else s.max_km_hybrid
     ratio = job.distance_km / max(limit, 1)
+    # Full marks up to half your max distance, then down to 70 at the limit (never below 60 here,
+    # since jobs past the limit were already handled above)
     score = 100 if ratio <= 0.5 else round(100 - 60 * (ratio - 0.5))
     return {"score": max(score, 60), "detail": f"{mode}, {round(job.distance_km)} km from home"}
 

@@ -130,6 +130,10 @@ async def sync_account(session: AsyncSession, client: httpx.AsyncClient, setting
     summary = {"checked": 0, "job_emails": 0, "updated": 0, "unmatched": 0}
     try:
         gmail = await open_gmail(client, settings, account)
+        # Which messages to look at:
+        # - normally Gmail's history since the saved point (history_id): only mail added to the Inbox since
+        # - the first check after connecting (no history_id), or when Gmail dropped that old history:
+        #   a search of the Inbox since the last check, or LOOKBACK days before connecting
         try:
             ids, latest = await gmail.new_inbox_ids(account.history_id) if account.history_id else ([], None)
             if latest is None:
