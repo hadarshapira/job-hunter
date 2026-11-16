@@ -17,11 +17,15 @@ const queryClient = new QueryClient({
 })
 
 // When a new version is deployed, switch to it and reload instead of showing the cached old app.
-// Also check for updates every 30 minutes for an installed app that stays open.
+// Also check for updates whenever the app comes back to the screen, and every 30 minutes while open.
 registerSW({
   immediate: true,
   onRegisteredSW(_url, reg) {
-    if (reg) setInterval(() => reg.update(), 30 * 60 * 1000)
+    if (!reg) return
+    setInterval(() => reg.update(), 30 * 60 * 1000)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {})
+    })
   },
 })
 
