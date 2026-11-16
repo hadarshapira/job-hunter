@@ -322,7 +322,7 @@ function ProfileSection() {
 }
 
 const CONNECT_RESULT: Record<string, [string, boolean]> = {
-  connected: ['Gmail connected. New job emails will be handled from now on.', true],
+  connected: ['Gmail connected. Job emails from the last 14 days and from now on will be handled.', true],
   cancelled: ['Gmail was not connected (cancelled in Google).', false],
   missing_permission: ["Google didn't give permission to manage your email. Connect again and leave the Gmail box ticked.", false],
   expired: ['The connection took too long. Please try again.', false],
@@ -379,7 +379,7 @@ function GmailSection() {
       <div>
         <h2 className="font-medium">Gmail</h2>
         <p className="text-sm text-muted">
-          Reads new mail in your Inbox every 10 minutes. &ldquo;We got your application&rdquo; marks the job Applied and rejections mark it Rejected; both
+          Reads new mail in your Inbox every 10 minutes (the first check also reads the last 14 days). &ldquo;We got your application&rdquo; marks the job Applied and rejections mark it Rejected; both
           emails move to the <b>{s.label}</b> label. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
         </p>
       </div>
@@ -409,7 +409,7 @@ function GmailSection() {
               {sync.isPending ? 'Checking…' : 'Check now'}
             </button>
             <button type="button" className="btn-ghost" disabled={disconnect.isPending}
-              onClick={() => confirm('Disconnect Gmail? The app will stop reading your email.') && disconnect.mutate()}>
+              onClick={() => confirm('Disconnect Gmail? The app will stop reading your email and forget its list of handled job emails (job statuses stay as they are).') && disconnect.mutate()}>
               Disconnect
             </button>
             {sync.data && !sync.data.error && (

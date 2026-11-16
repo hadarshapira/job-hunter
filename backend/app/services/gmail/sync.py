@@ -1,12 +1,12 @@
 """Read new Inbox mail, update job statuses and file job emails under the user's label.
 
-Runs every 10 minutes in the worker and from the "Check now" button. Only mail that arrived
-after Gmail was connected is looked at. Only job emails are stored, and only their sender,
+Runs every 10 minutes in the worker and from the "Check now" button. The first check after
+connecting also looks back LOOKBACK days, so replies that came just before connecting count too. Only job emails are stored, and only their sender,
 subject, date and what was done.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import select
@@ -25,6 +25,7 @@ from app.services.gmail.match import best_job, guess, score
 log = logging.getLogger("jobhunter.gmail")
 LABEL_NAME = "Job search"
 MOVE_KINDS = {CONFIRMATION, REJECTION}  # interview emails stay in the Inbox
+LOOKBACK = timedelta(days=14)  # how far back the first check after connecting reads
 
 # Never move a job backwards: which statuses each kind of email may change
 _FROM = {
@@ -60,6 +61,10 @@ async def _move(gmail: Gmail, account: GmailAccount, msg: GmailMessage) -> None:
         account.label_id = None  # label was deleted in Gmail: make it again
         await gmail.modify(msg.gmail_id, add=[await _label(gmail, account)], remove=["INBOX"])
     msg.moved = True
+
+
+def _aware(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 def _sender(mail: Mail) -> str:
@@ -130,12 +135,12 @@ async def sync_account(session: AsyncSession, client: httpx.AsyncClient, setting
             if latest is None:
                 raise HistoryExpired()
         except HistoryExpired:
-            since = account.last_sync_at or account.connected_at
+            since = account.last_sync_at or (_aware(account.connected_at) - LOOKBACK)
             ids = await gmail.search_ids(f"in:inbox after:{int(since.timestamp())}")
             latest = (await gmail.profile()).get("historyId")
         done = set((await session.scalars(select(GmailMessage.gmail_id).where(
             GmailMessage.user_id == account.user_id, GmailMessage.gmail_id.in_(ids)))).all()) if ids else set()
-        connected = account.connected_at if account.connected_at.tzinfo else account.connected_at.replace(tzinfo=timezone.utc)
+        oldest = _aware(account.connected_at) - LOOKBACK
         for mid in ids:
             if mid in done:
                 continue
@@ -146,7 +151,7 @@ async def sync_account(session: AsyncSession, client: httpx.AsyncClient, setting
                     continue  # deleted meanwhile
                 raise
             summary["checked"] += 1
-            if mail.received_at < connected or mail.sender_email == account.email.lower():
+            if mail.received_at < oldest or mail.sender_email == account.email.lower():
                 continue
             msg = await handle(session, gmail, account, mail)
             if msg:

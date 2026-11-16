@@ -115,6 +115,12 @@ class FakeGoogle:
             new = self.history[start:]
             return httpx.Response(200, json={"historyId": str(len(self.history)),
                                              "history": [{"messagesAdded": [{"message": {"id": m}}]} for m in new]})
+        if path == f"{base}/messages":  # search: supports "in:inbox after:<unix seconds>"
+            q = req.url.params["q"]
+            after = int(q.split("after:")[1].split()[0]) if "after:" in q else 0
+            hits = [m for m, d in self.inbox.items()
+                    if "INBOX" in d["labelIds"] and int(d["internalDate"]) // 1000 >= after]
+            return httpx.Response(200, json={"messages": [{"id": m} for m in hits]})
         if path.startswith(f"{base}/messages/") and path.endswith("/modify"):
             mid = path.split("/")[-2]
             body = json.loads(req.content)
@@ -162,9 +168,13 @@ async def job(c, jid) -> dict:
 
 # ---------- end to end ----------
 
-async def test_connect_stores_token_encrypted_and_only_new_mail(authed, maker, google):
-    google.add("old", "Thank you for applying to Wix", "We received your application for the Data Engineer role.", minutes_ago=60)
-    await add_job(authed, "Data Engineer", "Wix")
+async def test_connect_stores_token_encrypted_and_reads_recent_mail(authed, maker, google):
+    # A reply that came shortly before connecting counts; one older than the lookback window doesn't
+    google.add("recent", "Your application to Wix", "Unfortunately, we decided to move forward with other candidates.",
+               minutes_ago=60)
+    google.add("ancient", "Thank you for applying to Wix", "We received your application for the Data Engineer role.",
+               minutes_ago=60 * 24 * 30)
+    jid = await add_job(authed, "Data Engineer", "Wix", status="interview")
     await connect(authed, google)
     async with maker() as s:
         acc = (await s.scalars(select(GmailAccount))).one()
@@ -172,8 +182,12 @@ async def test_connect_stores_token_encrypted_and_only_new_mail(authed, maker, g
     assert oauth.decrypt(get_settings(), acc.refresh_token) == "rt-123"
 
     r = await authed.post("/api/gmail/sync")
-    assert r.json()["checked"] == 0  # mail from before connecting is never touched
-    assert google.modified == []
+    assert r.json()["checked"] == 1 and r.json()["updated"] == 1
+    assert (await job(authed, jid))["status"] == "rejected"
+    assert [m for m, *_ in google.modified] == ["recent"]
+
+    r = await authed.post("/api/gmail/sync")  # second check follows new mail only
+    assert r.json()["checked"] == 0
     status = (await authed.get("/api/gmail/status")).json()
     assert status["connected"] and status["email"] == "me@gmail.com" and status["last_error"] == ""
 
@@ -278,6 +292,23 @@ async def test_disconnect_revokes(authed, maker, google):
     await connect(authed, google)
     assert (await authed.post("/api/gmail/disconnect")).status_code == 204
     assert google.revoked and not (await authed.get("/api/gmail/status")).json()["connected"]
+
+
+async def test_reconnect_starts_fresh(authed, maker, google):
+    jid = await add_job(authed, "Data Engineer", "Wix", status="interview")
+    google.add("1", "Your application to Wix", "Unfortunately, we decided to move forward with other candidates.",
+               minutes_ago=60)
+    await connect(authed, google)
+    assert (await authed.post("/api/gmail/sync")).json()["updated"] == 1
+    await authed.post("/api/gmail/disconnect")
+    async with maker() as s:
+        assert (await s.scalars(select(GmailMessage))).all() == []
+    # The user sets the job back and puts the email back in the Inbox, then connects again
+    await authed.patch(f"/api/jobs/{jid}", json={"status": "interview"})
+    google.inbox["1"]["labelIds"] = ["INBOX"]
+    await connect(authed, google)
+    assert (await authed.post("/api/gmail/sync")).json()["updated"] == 1
+    assert (await job(authed, jid))["status"] == "rejected"
 
 
 async def test_other_users_cannot_see_or_touch_your_emails(authed, maker, google):

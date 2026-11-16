@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -124,7 +124,7 @@ async def callback(request: Request, state: str = "", code: str = "", error: str
     acc = await session.get(GmailAccount, uid) or GmailAccount(user_id=uid)
     acc.email = profile.get("emailAddress", "")
     acc.refresh_token = oauth.encrypt(settings, tokens["refresh_token"])
-    acc.history_id = str(profile.get("historyId") or "") or None  # only mail from now on
+    acc.history_id = None  # first check reads the last few days (sync.LOOKBACK), then follows new mail
     acc.connected_at = datetime.now(timezone.utc)
     acc.last_sync_at = None
     acc.last_error = ""
@@ -145,7 +145,9 @@ async def disconnect(user: User = Depends(current_user), session: AsyncSession =
         except oauth.GmailAuthError:
             pass
         await session.delete(acc)
-        await session.commit()
+    # Forget which emails were handled, so connecting again starts fresh (job statuses and timelines stay)
+    await session.execute(delete(GmailMessage).where(GmailMessage.user_id == user.id))
+    await session.commit()
 
 
 async def _account(session: AsyncSession, user: User) -> GmailAccount:
