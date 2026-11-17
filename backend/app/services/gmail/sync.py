@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
-from app.models import Event, GmailAccount, GmailMessage, Job, Status
+from app.models import DEFAULT_LABEL_APPLIED, DEFAULT_LABEL_REJECTED, Event, GmailAccount, GmailMessage, Job, Status, UserSettings
 from app.services import matching
 from app.services.dedup import dedup_key
 from app.services.gmail import oauth
@@ -25,12 +25,7 @@ from app.services.gmail.client import Gmail, Mail
 from app.services.gmail.match import best_job, guess, score
 
 log = logging.getLogger("jobhunter.gmail")
-LABEL_NAME = "Job search"  # parent label; each kind of email goes to its own sub-label
-KIND_LABELS = {
-    CONFIRMATION: f"{LABEL_NAME}/Applied",
-    REJECTION: f"{LABEL_NAME}/Rejected",
-}
-MOVE_KINDS = set(KIND_LABELS)  # interview emails stay in the Inbox
+MOVE_KINDS = {CONFIRMATION, REJECTION}  # interview emails stay in the Inbox
 LOOKBACK = timedelta(days=14)  # how far back the first check after connecting reads
 RECHECK = timedelta(hours=24)  # every check reads the whole Inbox this far back (always covers all of today)
 
@@ -43,6 +38,25 @@ _FROM = {
 _TO = {CONFIRMATION: Status.applied, INTERVIEW: Status.interview, REJECTION: Status.rejected}
 
 
+def labels_of(us: UserSettings | None) -> dict[str, str]:
+    """Which Gmail label each kind of email is moved to: the user's own names from Settings."""
+    return {CONFIRMATION: (us.gmail_label_applied if us else "") or DEFAULT_LABEL_APPLIED,
+            REJECTION: (us.gmail_label_rejected if us else "") or DEFAULT_LABEL_REJECTED}
+
+
+async def kind_labels(session: AsyncSession, user_id: int) -> dict[str, str]:
+    return labels_of(await session.get(UserSettings, user_id))
+
+
+def with_parents(names) -> list[str]:
+    """The labels and every parent above them: "A/B/C" gives "A/B/C", "A/B" and "A"."""
+    out: list[str] = []
+    for name in names:
+        parts = name.split("/")
+        out += ["/".join(parts[:i]) for i in range(len(parts), 0, -1)]
+    return list(dict.fromkeys(out))
+
+
 def gmail_link(account: GmailAccount, gmail_id: str) -> str:
     return f"https://mail.google.com/mail/?authuser={account.email}#all/{gmail_id}"
 
@@ -52,8 +66,7 @@ async def open_gmail(client: httpx.AsyncClient, settings: Settings, account: Gma
     return Gmail(client, token)
 
 
-async def _move(gmail: Gmail, msg: GmailMessage) -> None:
-    name = KIND_LABELS[msg.kind]
+async def _move(gmail: Gmail, msg: GmailMessage, name: str) -> None:
     try:
         await gmail.modify(msg.gmail_id, add=[await gmail.label_id(name)], remove=["INBOX"])
     except httpx.HTTPStatusError as e:
@@ -89,7 +102,7 @@ async def act(session: AsyncSession, gmail: Gmail, account: GmailAccount, msg: G
         msg.action = "no_change"
     job.updated_at = datetime.now(timezone.utc)
     if msg.kind in MOVE_KINDS:
-        await _move(gmail, msg)
+        await _move(gmail, msg, (await kind_labels(session, account.user_id))[msg.kind])
 
 
 async def _jobs(session: AsyncSession, user_id: int) -> list[Job]:
@@ -196,8 +209,8 @@ async def undo(session: AsyncSession, gmail: Gmail | None, msg: GmailMessage) ->
     job = await session.scalar(select(Job).where(Job.id == msg.job_id, Job.user_id == msg.user_id)
                                .options(selectinload(Job.events))) if msg.job_id else None
     if gmail and msg.moved:
-        # Older emails were filed under the parent label, newer ones under a sub-label: take off whichever exist
-        ours = await gmail.existing_label_ids([LABEL_NAME, *KIND_LABELS.values()])
+        # Take off the user's labels and their parents (older emails may have been filed under a parent)
+        ours = await gmail.existing_label_ids(with_parents((await kind_labels(session, msg.user_id)).values()))
         await gmail.modify(msg.gmail_id, add=["INBOX"], remove=ours)
         msg.moved = False
     if job is not None:

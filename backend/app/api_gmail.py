@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import COOKIE, _serializer, current_user
 from app.config import Settings, get_settings
 from app.db import get_session
-from app.models import GmailAccount, GmailMessage, Job, User
+from app.models import GmailAccount, GmailMessage, Job, User, UserSettings
 from app.services.gmail import oauth
 from app.services.gmail.client import Gmail
 from app.services.gmail import sync as gsync
@@ -34,8 +34,26 @@ class GmailStatus(BaseModel):
     connected_at: datetime | None = None
     last_sync_at: datetime | None = None
     last_error: str = ""
-    label: str = gsync.LABEL_NAME
-    labels: dict[str, str] = gsync.KIND_LABELS  # where each kind of email is moved
+    labels: dict[str, str] = {}  # where each kind of email is moved (the user's own label names)
+
+
+class LabelNames(BaseModel):
+    """The Gmail labels confirmations and rejections are moved to. "A/B" is label B nested under A."""
+
+    confirmation: str
+    rejection: str
+
+    @field_validator("confirmation", "rejection")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        v = "/".join(p.strip() for p in v.strip().strip("/").split("/") if p.strip())
+        if not v:
+            raise ValueError("Label name can't be empty")
+        if len(v) > 200:
+            raise ValueError("Label name is too long (200 characters at most)")
+        if v.upper() in ("INBOX", "SPAM", "TRASH", "UNREAD", "STARRED", "IMPORTANT", "SENT", "DRAFT"):
+            raise ValueError(f"{v} is a Gmail system label; choose another name")
+        return v
 
 
 class GmailMessageOut(BaseModel):
@@ -80,10 +98,23 @@ def _configured(settings: Settings) -> bool:
 async def gmail_status(user: User = Depends(current_user), session: AsyncSession = Depends(get_session),
                        settings: Settings = Depends(get_settings)):
     acc = await session.get(GmailAccount, user.id)
+    labels = await gsync.kind_labels(session, user.id)
     if not acc:
-        return GmailStatus(configured=_configured(settings), connected=False)
+        return GmailStatus(configured=_configured(settings), connected=False, labels=labels)
     return GmailStatus(configured=_configured(settings), connected=True, email=acc.email, connected_at=acc.connected_at,
-                       last_sync_at=acc.last_sync_at, last_error=acc.last_error)
+                       last_sync_at=acc.last_sync_at, last_error=acc.last_error, labels=labels)
+
+
+@router.put("/labels", response_model=LabelNames)
+async def save_labels(body: LabelNames, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    """Rename where job emails go from now on. Emails already moved keep their label."""
+    us = await session.get(UserSettings, user.id)
+    if us is None:
+        us = UserSettings(user_id=user.id)
+        session.add(us)
+    us.gmail_label_applied, us.gmail_label_rejected = body.confirmation, body.rejection
+    await session.commit()
+    return body
 
 
 @router.get("/connect")

@@ -151,8 +151,11 @@ export interface GmailStatus {
   connected_at: string | null
   last_sync_at: string | null
   last_error: string
-  label: string
   labels: Partial<Record<GmailKind, string>>
+}
+export interface GmailLabels {
+  confirmation: string
+  rejection: string
 }
 export type GmailKind = 'confirmation' | 'rejection' | 'interview'
 export interface GmailMessage {
@@ -255,6 +258,7 @@ export const api = {
   gmailStatus: () => req<GmailStatus>('/gmail/status'),
   gmailSync: () => req<{ checked: number; job_emails: number; updated: number; unmatched: number; error: string }>('/gmail/sync', { method: 'POST' }),
   gmailDisconnect: () => req<void>('/gmail/disconnect', { method: 'POST' }),
+  gmailSaveLabels: (l: GmailLabels) => req<GmailLabels>('/gmail/labels', { method: 'PUT', body: json(l) }),
   gmailMessages: () => req<GmailMessage[]>('/gmail/messages'),
   gmailAssign: (id: number, jobId: number) => req<GmailMessage>(`/gmail/messages/${id}/assign`, { method: 'POST', body: json({ job_id: jobId }) }),
   gmailUndo: (id: number) => req<GmailMessage>(`/gmail/messages/${id}/undo`, { method: 'POST' }),

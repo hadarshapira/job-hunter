@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, SOURCES, type GmailMessage, type GmailStatus, type JobSummary, type Profile, type SearchSettings } from '../api'
+import { api, SOURCES, type GmailLabels, type GmailMessage, type GmailStatus, type JobSummary, type Profile, type SearchSettings } from '../api'
 import { Empty, PageTitle } from '../components'
 import { FindJobsButton } from './Jobs'
 
@@ -371,7 +371,7 @@ const KIND_LABEL: Record<GmailMessage['kind'], string> = {
 
 function actionText(m: GmailMessage, s: GmailStatus) {
   const job = m.job_id ? `${m.job_title} · ${m.job_company}` : ''
-  const moved = m.moved ? ` · moved to ${s.labels?.[m.kind] ?? s.label}` : ''
+  const moved = m.moved ? ` · moved to ${s.labels?.[m.kind] ?? 'your label'}` : ''
   switch (m.action) {
     case 'status_changed': return `Updated ${job}${moved}`
     case 'created_job': return `Added ${job} as Applied${moved}`
@@ -413,7 +413,7 @@ function GmailSection() {
         <h2 className="font-medium">Gmail</h2>
         <p className="text-sm text-muted">
           Every 5 minutes it reads your Inbox from the last 24 hours, read or unread (the first check also reads the last 14 days). &ldquo;We got your application&rdquo; marks the job Applied and
-          moves the email to <b>{s.labels?.confirmation ?? s.label}</b>; rejections mark it Rejected and move to <b>{s.labels?.rejection ?? s.label}</b>. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
+          moves the email to <b>{s.labels?.confirmation}</b>; rejections mark it Rejected and move to <b>{s.labels?.rejection}</b>. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
         </p>
       </div>
       {notice && (
@@ -422,6 +422,7 @@ function GmailSection() {
           <button type="button" className="shrink-0 text-muted" onClick={() => { params.delete('gmail'); setParams(params, { replace: true }) }}>✕</button>
         </div>
       )}
+      <GmailLabelNames current={s.labels} onSaved={refresh} />
       {!s.configured ? (
         <p className="text-sm text-warn">Gmail isn&rsquo;t set up on the server yet (GOOGLE_CLIENT_SECRET in .env).</p>
       ) : !connected ? (
@@ -484,6 +485,37 @@ function GmailSection() {
         </>
       )}
     </section>
+  )
+}
+
+/** The Gmail labels job emails are moved to. Each user names their own; "A/B" nests B under A. */
+function GmailLabelNames({ current, onSaved }: { current: GmailStatus['labels']; onSaved: () => void }) {
+  const initial: GmailLabels = { confirmation: current.confirmation ?? '', rejection: current.rejection ?? '' }
+  const [draft, setDraft] = useState(initial)
+  useEffect(() => setDraft(initial), [current.confirmation, current.rejection]) // eslint-disable-line react-hooks/exhaustive-deps
+  const save = useMutation({ mutationFn: api.gmailSaveLabels, onSuccess: onSaved })
+  const changed = draft.confirmation !== initial.confirmation || draft.rejection !== initial.rejection
+  const field = (key: keyof GmailLabels, title: string) => (
+    <label className="grid flex-1 gap-1 text-sm">
+      {title}
+      <input className="input" value={draft[key]} maxLength={200} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} />
+    </label>
+  )
+  return (
+    <details className="rounded-xl border border-line p-3 text-sm">
+      <summary className="cursor-pointer font-medium">Gmail label names</summary>
+      <p className="mt-2 text-xs text-muted">Use &ldquo;/&rdquo; to nest a label under another, e.g. Job search/Applied. New names apply to emails from now on; emails already moved keep their label.</p>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        {field('confirmation', 'Application received')}
+        {field('rejection', 'Rejection')}
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <button type="button" className="btn-primary" disabled={!changed || save.isPending} onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save labels'}
+        </button>
+        {save.isError && <span className="text-danger">{save.error.message}</span>}
+      </div>
+    </details>
   )
 }
 

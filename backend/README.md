@@ -17,7 +17,7 @@ app/
 ├── api.py               /api/jobs*, /api/stats: list, add, import, edit, notes, delete
 ├── api_discovery.py     /api/settings, /api/companies, /api/find-jobs: search settings and "Find jobs now"
 ├── api_profile.py       /api/profile*: CV upload, skills, years; /api/jobs/{id}/match
-├── api_gmail.py         /api/gmail/*: connect, check now, recent emails, assign, undo, disconnect
+├── api_gmail.py         /api/gmail/*: connect, check now, label names, recent emails, assign, undo, disconnect
 │
 ├── collectors/          Where jobs are found (each returns Posting objects)
 │   ├── __init__.py        Posting = ParsedJob + source + id + url (+ coordinates)

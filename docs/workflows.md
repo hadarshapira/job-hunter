@@ -165,14 +165,15 @@ Every 5 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail/
 
    | Email | Status change (only forward, never back) | Gmail |
    |---|---|---|
-   | Application received | new / saved → **applied** | moved to **Job search** (out of the Inbox) |
+   | Application received | new / saved → **applied** | moved to your *Application received* label (out of the Inbox) |
    | Interview invitation | new / saved / applied / screening → **interview** | stays in the Inbox |
-   | Rejection | anything except offer / rejected → **rejected** | moved to **Job search** |
+   | Rejection | anything except offer / rejected → **rejected** | moved to your *Rejection* label |
 
    The job's timeline gets "Rejection email from …" with a link to the email. A confirmation for a company that isn't in your jobs creates the job (source **email**) and marks it applied. Mail stays unread; the app never marks mail as read.
 5. Only job emails are stored (`gmail_messages`): sender, subject, date, kind and what was done. Never the body.
 
 ### In Settings → Gmail
+- **Gmail label names:** where confirmations and rejections are moved. Defaults are *Job search/Applied* and *Job search/Rejected*; each user can rename them (`PUT /api/gmail/labels`, stored in `user_settings`). "/" nests a label under another; labels are created in Gmail when first needed. Renaming affects only emails moved afterwards.
 - **Recent job emails:** what each email did, with **Undo**. Undo puts the status back, moves the email back to the Inbox, and removes a job the email created.
 - **Unmatched** emails get a *Which job is this about?* list and **Link to job** (`POST /api/gmail/messages/{id}/assign`).
 - **Disconnect:** revokes access at Google, deletes the token, and forgets the list of handled emails, so connecting again starts fresh. Job statuses and timelines stay.

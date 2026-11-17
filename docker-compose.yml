@@ -56,7 +56,10 @@ services:
     restart: unless-stopped
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     restart: unless-stopped
     depends_on:
       api:

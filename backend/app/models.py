@@ -93,6 +93,9 @@ class Job(Base):
 DEFAULT_TITLES = ["data engineer", "data platform", "big data", "data infrastructure", "analytics engineer",
                   "data architect", "data lead", "data warehouse"]
 DEFAULT_EXCLUDE = ["junior", "intern", "student", "graduate"]
+# Gmail labels job emails are moved to. "A/B" is label B nested under A. Each user can rename them in Settings.
+DEFAULT_LABEL_APPLIED = "Job search/Applied"
+DEFAULT_LABEL_REJECTED = "Job search/Rejected"
 # Sources the job search can use; manual adds and pasted links are always allowed
 COLLECT_SOURCES = ["linkedin", "jsearch", "greenhouse", "lever", "ashby"]
 
@@ -114,6 +117,8 @@ class UserSettings(Base):
     senior_only: Mapped[bool] = mapped_column(Boolean, default=False)
     sources: Mapped[list] = mapped_column(JSON, default=lambda: list(COLLECT_SOURCES))
     ai_grading: Mapped[bool] = mapped_column(Boolean, default=False)  # grade jobs with Claude (costs per job)
+    gmail_label_applied: Mapped[str] = mapped_column(String(200), default=DEFAULT_LABEL_APPLIED)
+    gmail_label_rejected: Mapped[str] = mapped_column(String(200), default=DEFAULT_LABEL_REJECTED)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -217,7 +222,7 @@ class GmailAccount(Base):
     email: Mapped[str] = mapped_column(String(320), default="")
     refresh_token: Mapped[str] = mapped_column(Text)  # encrypted
     history_id: Mapped[str | None] = mapped_column(String(40))  # where the last check stopped
-    label_id: Mapped[str | None] = mapped_column(String(100))  # Gmail id of the "Job search" label
+    label_id: Mapped[str | None] = mapped_column(String(100))  # no longer used (labels are looked up by name)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str] = mapped_column(Text, default="")

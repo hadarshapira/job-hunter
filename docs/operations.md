@@ -1,6 +1,6 @@
 # Operations: run, update, back up, fix
 
-All commands run in PowerShell from the project folder (`C:\dev\job-hunter`). Everything runs in Docker Desktop.
+All commands run in PowerShell from the project folder (where you cloned the repo). Everything runs in Docker Desktop.
 
 - [Settings in .env](#settings-in-env)
 - [Start, stop, status](#start-stop-status)
@@ -28,6 +28,7 @@ Secrets live only in `.env`, which git ignores, so never commit it. Start from `
 | `PUBLIC_URL` | The address Google sends Gmail sign-in back to, e.g. `https://myhost.ts.net` | Taken from the request's host (works through Tailscale) |
 | `JSEARCH_API_KEY` | RapidAPI key for JSearch (Google for Jobs) | JSearch skipped; LinkedIn + company boards only |
 | `ANTHROPIC_API_KEY` | Claude API key (console.anthropic.com) for the AI match grade | Only the rule-based grade |
+| `CONTACT_EMAIL` | Contact address on the public home + privacy pages (Google's OAuth review needs one). Read when `web` is built: `docker compose up -d --build web` | "the owner of this copy" |
 | `SIGNUP_ENABLED` | `false` stops new accounts | `true` |
 | `COOKIE_SECURE` | `true` once served only over HTTPS | `false` |
 

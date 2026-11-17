@@ -12,7 +12,7 @@ Several people can use it: everyone signs in with email + password or Google, an
 | **Add a job yourself** | Paste any job link (or **Share → JobHunter** on Android). Greenhouse, Lever, Ashby and LinkedIn links are read through their structured data; other sites through schema.org data, or the page title as a fallback. |
 | **Match grade** | Every job gets a 0-100 grade against your CV: skills 50%, experience 15%, seniority 15%, role 10%, location 10%. It also shows a table of skills you have, similar ones, and missing ones. With an Anthropic API key, **Claude grades each job against your full CV** instead, like a recruiter, with the reasons (strengths, gaps, deal-breakers). |
 | **Tracker** | New → Saved → Applied → Screening → Interview → Offer / Rejected / Ghosted / Archived, with notes, a timeline and follow-up reminders (7 days after applying). |
-| **Gmail** | Every 5 minutes it reads all Inbox mail from the last 24 hours (read or unread). "We got your application" → **Applied**, rejection → **Rejected** (moved to the **Job search/Applied** and **Job search/Rejected** labels), interview invitation → **Interview** (stays in the Inbox). Every action can be undone. |
+| **Gmail** | Every 5 minutes it reads all Inbox mail from the last 24 hours (read or unread). "We got your application" → **Applied**, rejection → **Rejected** (moved to Gmail labels you name in Settings, by default **Job search/Applied** and **Job search/Rejected**), interview invitation → **Interview** (stays in the Inbox). Every action can be undone. |
 | **Stats** | Pipeline counts, jobs by source, response rate. |
 
 Not built yet: push alerts, tailored CV / cover letters, AllJobs / Drushim, cloud hosting.

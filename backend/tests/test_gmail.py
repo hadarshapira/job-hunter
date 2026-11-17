@@ -40,15 +40,15 @@ def gmail_secret(monkeypatch):
     ("Your application to Aidoc", "Thank you for your interest. Unfortunately, we have decided to move forward with other candidates.", REJECTION),
     ("Update on your application", "After careful consideration we will not be moving forward with your application for the role.", REJECTION),
     ("Update regarding your application at Northwind",
-     "Dear Alex\n\nThank you for your interest in the Senior Data Engineer position at Northwind and for taking the time to apply.\n\n"
-     "After carefully reviewing your application, we have decided to move forward with candidates whose experience and background "
-     "are more closely aligned with the current requirements of the role.\nWe truly appreciate your interest.", REJECTION),
+     "Dear Alex\n\nThanks for applying to the Senior Data Engineer role at Northwind.\n\n"
+     "We have decided to move forward with candidates whose experience and background "
+     "better match the role.\nThank you again.", REJECTION),
     ("Your application", "Thanks for applying. We won't be moving forward with your application at this time.", REJECTION),
     ("Your application", "Thanks for applying. We have decided to go in a different direction for this role.", REJECTION),
     ("Thank you from Contoso",
-     "Hi Alex,\n\nWe know that job hunting isn’t easy, and we sincerely thank you for your interest in Contoso.\n\n"
-     "After reviewing your CV, we made the decision not to move forward in the process this time around.\n\n"
-     "So many factors go into making a single hire, and this doesn’t rule out any future opportunities that may arise at Contoso.", REJECTION),
+     "Hi Alex,\n\nThanks for your interest in Contoso.\n\n"
+     "After reviewing your CV, we made the decision not to move forward in the process this time.\n\n"
+     "We wish you the best of luck.", REJECTION),
     ("Your application", "Thanks for applying. We decided to proceed with a different candidate for this role.", REJECTION),
     ("עדכון לגבי מועמדותך", "תודה על התעניינותך במשרה. לצערנו החלטנו להתקדם עם מועמדים אחרים.", REJECTION),
     ("Interview - Data Engineer at Claroty", "We'd love to invite you to an interview. Please pick a time: https://calendly.com/x", INTERVIEW),
@@ -366,3 +366,33 @@ async def test_other_users_cannot_see_or_touch_your_emails(authed, maker, google
     async with maker() as s:
         assert all(m.user_id == 1 for m in (await s.scalars(select(GmailMessage))).all())
         assert (await s.get(Job, eve_job)).status == "applied"
+
+
+async def test_custom_label_names(authed, google):
+    """Each user picks their own label names; undo takes off the label and its parent."""
+    st = (await authed.get("/api/gmail/status")).json()
+    assert st["labels"] == {"confirmation": "Job search/Applied", "rejection": "Job search/Rejected"}
+    bad = await authed.put("/api/gmail/labels", json={"confirmation": " / ", "rejection": "x"})
+    assert bad.status_code == 422
+    r = await authed.put("/api/gmail/labels", json={"confirmation": " Work / Applied ", "rejection": "Work/No"})
+    assert r.json() == {"confirmation": "Work/Applied", "rejection": "Work/No"}
+    assert (await authed.get("/api/gmail/status")).json()["labels"]["rejection"] == "Work/No"
+
+    wix = await add_job(authed, "Senior Data Engineer", "Wix")
+    await connect(authed, google)
+    google.add("1", "Thank you for applying to Wix", "We received your application for the Senior Data Engineer position.")
+    await authed.post("/api/gmail/sync")
+    ids = {lb["name"]: lb["id"] for lb in google.labels}
+    assert google.inbox["1"]["labelIds"] == [ids["Work/Applied"]] and "Work" in ids
+    assert (await job(authed, wix))["status"] == "applied"
+
+    google.inbox["1"]["labelIds"].append(ids["Work"])  # an older email filed under the parent
+    msg = (await authed.get("/api/gmail/messages")).json()[0]
+    await authed.post(f"/api/gmail/messages/{msg['id']}/undo")
+    assert google.inbox["1"]["labelIds"] == ["INBOX"]
+
+
+async def test_labels_are_per_user(authed, client):
+    await authed.put("/api/gmail/labels", json={"confirmation": "Mine/Applied", "rejection": "Mine/Rejected"})
+    await signup(client, "other@example.com")
+    assert (await client.get("/api/gmail/status")).json()["labels"]["confirmation"] == "Job search/Applied"
