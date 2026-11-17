@@ -78,3 +78,7 @@ docker compose build api -q; docker compose run --rm --no-deps api pytest -q
 ```
 
 They use an in-memory SQLite database and fake Google / LinkedIn responses, so nothing real is called.
+
+## License
+
+[MIT](LICENSE)
