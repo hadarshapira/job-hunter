@@ -69,6 +69,7 @@ class JobOut(JobSummary):
     parse_issues: str = ""
     match: dict | None = None
     match_at: datetime | None = None
+    ai_match: dict | None = None
     events: list[EventOut] = []
 
 

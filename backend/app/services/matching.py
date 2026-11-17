@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job, UserProfile, UserSettings
+from app.services import ai_match
 from app.services import skills as sk
 from app.services.filters import location_decision, title_matches
 
@@ -161,10 +162,18 @@ def score_job(job: Job, profile: UserProfile | None, s: UserSettings | None) -> 
 
 
 def apply(job: Job, profile: UserProfile | None, s: UserSettings | None) -> None:
+    """Rule-based grade, unless the job has an AI grade that still fits the current CV, settings
+    and job text: then that one is the score (the rule-based details stay in job.match)."""
     result = score_job(job, profile, s)
     job.match = result
     job.match_score = result["score"] if result else None
     job.match_at = datetime.now(timezone.utc) if result else None
+    if job.ai_match:
+        current = ai_match.is_current(job, profile, s)
+        if current:
+            job.match_score = job.ai_match["score"]
+        if job.ai_match.get("stale", False) == current:
+            job.ai_match = {**job.ai_match, "stale": not current}  # new dict so SQLAlchemy saves it
 
 
 async def context(session: AsyncSession, user_id: int) -> tuple[UserProfile | None, UserSettings | None]:

@@ -72,6 +72,8 @@ class Job(Base):
     match_score: Mapped[int | None] = mapped_column(Integer, index=True)
     match: Mapped[dict | None] = mapped_column(JSON)  # breakdown + skills table, see services/matching.py
     match_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Claude's grade, see services/ai_match.py. When current, match_score is this grade.
+    ai_match: Mapped[dict | None] = mapped_column(JSON)
 
     # Tracker fields
     status: Mapped[str] = mapped_column(String(20), default=Status.saved, index=True)
@@ -111,6 +113,7 @@ class UserSettings(Base):
     exclude_keywords: Mapped[list] = mapped_column(JSON, default=lambda: list(DEFAULT_EXCLUDE))
     senior_only: Mapped[bool] = mapped_column(Boolean, default=False)
     sources: Mapped[list] = mapped_column(JSON, default=lambda: list(COLLECT_SOURCES))
+    ai_grading: Mapped[bool] = mapped_column(Boolean, default=False)  # grade jobs with Claude (costs per job)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -125,6 +128,8 @@ class UserProfile(Base):
     cv_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     skills: Mapped[list] = mapped_column(JSON, default=list)
     years_experience: Mapped[int | None] = mapped_column(Integer)
+    # The user's own notes for the AI grader (what to count, what they're looking for)
+    ai_notes: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

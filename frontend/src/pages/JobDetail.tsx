@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { api, STATUSES, statusInfo, WORK_MODES, type Job } from '../api'
+import { api, STATUSES, statusInfo, WORK_MODES, type Job, type Match } from '../api'
 import { Empty, MatchBadge, matchWord } from '../components'
 
 // One-tap move to the usual next stage
@@ -225,13 +225,68 @@ const SKILL_STATUS = {
   missing: { icon: '✗', label: 'Missing', cls: 'text-danger' },
 } as const
 
+const VERDICT = { strong: 'Strong fit', good: 'Good fit', stretch: 'A stretch', poor: 'Poor fit' } as const
+
 function MatchCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) {
+  const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings })
   const recalc = useMutation({ mutationFn: () => api.rematch(job.id), onSuccess: onSaved })
+  const askAi = useMutation({ mutationFn: () => api.aiMatch(job.id), onSuccess: onSaved })
+  const ai = job.ai_match
+  const aiCurrent = ai && ai.score != null && !ai.stale
+  const aiAvailable = settings.data?.ai_available
+
+  const aiButton = aiAvailable && (
+    <button className="btn-ghost shrink-0" disabled={askAi.isPending} onClick={() => askAi.mutate()}>
+      {askAi.isPending ? 'AI is reading…' : aiCurrent ? '↻ Ask AI again' : '✨ Grade with AI'}
+    </button>
+  )
+  const aiProblems = (
+    <>
+      {askAi.isError && <p className="text-sm text-danger">{askAi.error.message}</p>}
+      {ai?.error && !ai.stale && <p className="text-sm text-warn">AI grade: {ai.error}</p>}
+    </>
+  )
+
+  if (aiCurrent) {
+    return (
+      <div className="card grid gap-4 p-4">
+        <div className="flex items-center gap-4">
+          <MatchBadge score={ai.score} large />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-medium">{ai.verdict ? VERDICT[ai.verdict] : matchWord(ai.score!)}</h2>
+            <p className="text-xs text-muted">AI grade · {new Date(ai.graded_at).toLocaleDateString()}</p>
+          </div>
+          {aiButton}
+        </div>
+        {aiProblems}
+        {ai.summary && <p className="text-sm">{ai.summary}</p>}
+        <AiList title="Deal-breakers" items={ai.dealbreakers} icon="⛔" cls="text-danger" />
+        <AiList title="Why it fits" items={ai.strengths} icon="✓" cls="text-ok" />
+        <AiList title="Gaps" items={ai.gaps} icon="✗" cls="text-warn" />
+        {job.match && (
+          <details className="rounded-xl border border-line p-3">
+            <summary className="cursor-pointer text-sm text-muted">
+              Keyword check: {job.match.score ?? '–'} (the quick rule-based grade)
+            </summary>
+            <div className="mt-3 grid gap-4">
+              <RuleDetails m={job.match} />
+            </div>
+          </details>
+        )}
+      </div>
+    )
+  }
+
   const m = job.match
   const recalcButton = (
     <button className="btn-ghost shrink-0" disabled={recalc.isPending} onClick={() => recalc.mutate()}>
       {recalc.isPending ? 'Calculating…' : m ? '↻ Recalculate' : 'Calculate match'}
     </button>
+  )
+  const aiNote = ai?.stale ? (
+    <p className="text-sm text-muted">Your CV, settings or this job changed since the AI graded it. A new AI grade is on its way (a few minutes).</p>
+  ) : (
+    settings.data?.ai_grading && !ai && <p className="text-sm text-muted">The AI grade for this job is on its way (a few minutes).</p>
   )
 
   if (!m) {
@@ -242,14 +297,14 @@ function MatchCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) {
           Add your CV and skills in <Link to="/settings" className="text-primary underline">Settings</Link> to see a match grade
           and which skills fit or are missing.
         </p>
-        <div>{recalcButton}</div>
+        <div className="flex flex-wrap gap-2">{recalcButton}{aiButton}</div>
         {recalc.isSuccess && !recalc.data.match && <p className="text-sm text-warn">No profile yet. Upload your CV in Settings first.</p>}
         {recalc.isError && <p className="text-sm text-danger">{recalc.error.message}</p>}
+        {aiProblems}
       </div>
     )
   }
 
-  const count = (s: keyof typeof SKILL_STATUS) => m.skills.filter((r) => r.status === s).length
   const req = m.skills.filter((r) => r.need === 'required')
   return (
     <div className="card grid gap-4 p-4">
@@ -263,10 +318,38 @@ function MatchCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) {
               : 'Based on your CV, skills and search settings'}
           </p>
         </div>
-        {recalcButton}
+        <div className="flex shrink-0 flex-col gap-2">{recalcButton}{aiButton}</div>
       </div>
       {recalc.isError && <p className="text-sm text-danger">{recalc.error.message}</p>}
+      {aiProblems}
+      {aiNote}
+      <RuleDetails m={m} />
+    </div>
+  )
+}
 
+function AiList({ title, items, icon, cls }: { title: string; items?: string[]; icon: string; cls: string }) {
+  if (!items?.length) return null
+  return (
+    <div>
+      <h3 className="mb-1 text-sm font-medium">{title}</h3>
+      <ul className="grid gap-1 text-sm">
+        {items.map((s) => (
+          <li key={s} className="flex gap-2">
+            <span className={cls}>{icon}</span>
+            <span>{s}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** The rule-based grade: the five parts and the skills table. */
+function RuleDetails({ m }: { m: Match }) {
+  const count = (s: keyof typeof SKILL_STATUS) => m.skills.filter((r) => r.status === s).length
+  return (
+    <>
       <div className="grid gap-2.5">
         {m.parts.map((p) => (
           <div key={p.key} className="grid gap-1 text-sm">
@@ -326,6 +409,6 @@ function MatchCard({ job, onSaved }: { job: Job; onSaved: (j: Job) => void }) {
         Grade = skills 50% · experience 15% · seniority 15% · role 10% · location 10%. Parts with no data are left out.
         Edit your skills in <Link to="/settings" className="text-primary underline">Settings</Link>.
       </p>
-    </div>
+    </>
   )
 }

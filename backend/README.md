@@ -7,7 +7,7 @@ Python 3.12, FastAPI, async SQLAlchemy 2 on Postgres, Alembic migrations, arq wo
 ```
 app/
 ├── main.py              FastAPI app: includes the routers below
-├── worker.py            Scheduled tasks (arq): job search 07:00/15:00, Gmail every 10 min
+├── worker.py            Scheduled tasks (arq): job search 07:00/15:00, Gmail every 10 min, AI grades every 5 min
 ├── config.py            Settings from .env (pydantic-settings)
 ├── db.py                Database engine and session
 ├── models.py            All tables (SQLAlchemy models)
@@ -35,7 +35,8 @@ app/
 │   ├── sites/             One module per site without structured data (now: linkedin.py)
 │   ├── quality.py         Clean-up + issue list run on every imported/collected job
 │   ├── skills.py          Skills taxonomy and text matching, years of experience
-│   ├── matching.py        The 0-100 match grade
+│   ├── matching.py        The 0-100 match grade (rule-based)
+│   ├── ai_match.py        The AI grade: Claude reads CV + job; replaces the score while current
 │   ├── cv.py              Text out of PDF / DOCX / TXT
 │   └── gmail/
 │       ├── oauth.py         Google OAuth: links, tokens, encryption of the stored token
@@ -46,7 +47,7 @@ app/
 │
 └── tools/diagnose.py    CLI: how a job link imports (see docs/parsers.md)
 
-migrations/versions/     0001…0008, one file per database change
+migrations/versions/     0001…0009, one file per database change
 tests/                   pytest; conftest.py gives an in-memory DB and a signed-in client
 ```
 
@@ -97,7 +98,7 @@ Add a `_s("Name", "group", r"alias", …)` line to `SKILLS` in `services/skills.
 
 ### Add a database column
 1. Add it to the model in `models.py`.
-2. `migrations/versions/0009_<what>.py` with `revision = "0009"`, `down_revision = "0008"`, using `op.add_column` / `op.drop_column`.
+2. `migrations/versions/0010_<what>.py` with `revision = "0010"`, `down_revision = "0009"`, using `op.add_column` / `op.drop_column`.
 3. Rebuild: the API applies it on start.
 
 ## Performance notes

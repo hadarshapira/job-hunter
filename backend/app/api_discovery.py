@@ -14,7 +14,7 @@ from app.collectors.jsearch import quota_remaining
 from app.config import get_settings
 from app.db import SessionLocal, get_session
 from app.models import COLLECT_SOURCES, CollectionRun, Company, GeoCache, User
-from app.services import ingest, matching
+from app.services import ai_match, ingest, matching
 from app.services.geo import USER_AGENT, geocode, normalize_place
 
 router = APIRouter(prefix="/api")
@@ -30,12 +30,14 @@ class SettingsIn(BaseModel):
     exclude_keywords: list[str] = Field(default_factory=list, max_length=30)
     senior_only: bool = False
     sources: list[str] = Field(default_factory=lambda: list(COLLECT_SOURCES))
+    ai_grading: bool = False
 
 
 class SettingsOut(SettingsIn):
     home_found: str | None = None  # what the home text was matched to on the map
     home_lat: float | None = None
     home_lon: float | None = None
+    ai_available: bool = False  # the server has an Anthropic API key
 
 
 def _clean_list(items: list[str]) -> list[str]:
@@ -56,7 +58,7 @@ async def _out(session: AsyncSession, s) -> SettingsOut:
     return SettingsOut(
         home_label=s.home_label, work_modes=s.work_modes, max_km_onsite=s.max_km_onsite, max_km_hybrid=s.max_km_hybrid,
         title_keywords=s.title_keywords, exclude_keywords=s.exclude_keywords, senior_only=s.senior_only,
-        sources=ingest.enabled_sources(s),
+        sources=ingest.enabled_sources(s), ai_grading=s.ai_grading, ai_available=ai_match.available(),
         home_found=label, home_lat=s.home_lat, home_lon=s.home_lon,
     )
 
@@ -92,6 +94,7 @@ async def put_user_settings(body: SettingsIn, user: User = Depends(current_user)
     s.work_modes, s.max_km_onsite, s.max_km_hybrid = modes, body.max_km_onsite, body.max_km_hybrid
     s.title_keywords, s.exclude_keywords, s.senior_only = titles, _clean_list(body.exclude_keywords), body.senior_only
     s.sources = sources
+    s.ai_grading = body.ai_grading
     await matching.rescore_all(session, user.id)
     await session.commit()
     return await _out(session, s)

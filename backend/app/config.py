@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     jsearch_cache_hours: int = 20
     # Each JSearch query = 1 request of the free 200/month; stop when this many are left
     jsearch_min_quota: int = 15
+    # AI match grades (empty key = only the rule-based grade)
+    anthropic_api_key: str = ""
+    ai_model: str = "claude-sonnet-5-5"
+    ai_effort: str = "medium"  # how hard the model thinks: low | medium | high
     cookie_secure: bool = False
     session_days: int = 30
 

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timezone
 
+import anthropic
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from app.auth import current_user
 from app.db import get_session
 from app.models import User, UserProfile
 from app.schemas import JobOut
-from app.services import matching
+from app.services import ai_match, matching
 from app.services import skills as sk
 from app.services.cv import CVError, extract_text
 
@@ -22,6 +23,7 @@ MAX_CV_BYTES = 5 * 1024 * 1024
 class ProfileIn(BaseModel):
     skills: list[str] = Field(default_factory=list, max_length=150)
     years_experience: int | None = Field(default=None, ge=0, le=50)
+    ai_notes: str = Field(default="", max_length=3000)  # for the AI grader
 
 
 class ProfileOut(ProfileIn):
@@ -45,6 +47,7 @@ def _out(p: UserProfile, rescored: int | None = None) -> ProfileOut:
     return ProfileOut(
         skills=p.skills or [],
         years_experience=p.years_experience,
+        ai_notes=p.ai_notes or "",
         cv_filename=p.cv_filename,
         cv_uploaded_at=p.cv_uploaded_at,
         cv_years_guess=sk.cv_years(p.cv_text, date.today().year) if p.cv_text else None,
@@ -75,6 +78,7 @@ async def put_profile(body: ProfileIn, user: User = Depends(current_user), sessi
     p = await _profile(session, user.id)
     p.skills = _clean_skills(body.skills)
     p.years_experience = body.years_experience
+    p.ai_notes = body.ai_notes.strip()
     n = await matching.rescore_all(session, user.id)
     await session.commit()
     return _out(p, n)
@@ -101,6 +105,25 @@ async def upload_cv(
     n = await matching.rescore_all(session, user.id)
     await session.commit()
     return _out(p, n)
+
+
+@router.post("/jobs/{job_id}/ai-match", response_model=JobOut)
+async def ai_rematch_job(job_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    """Grade one job with Claude now (takes a few seconds), even if it already has a current grade."""
+    job = await _load(session, user, job_id)
+    profile, s = await matching.context(session, user.id)
+    if not ai_match.available():
+        raise HTTPException(503, "AI grading isn't set up on this server (no Anthropic API key).")
+    if not (profile and profile.cv_text.strip()):
+        raise HTTPException(422, "Upload your CV in Settings first. The AI grade compares the job with it.")
+    try:
+        result = await ai_match.grade(job, profile, s)
+    except anthropic.APIError as exc:
+        raise HTTPException(502, f"The AI service didn't answer ({type(exc).__name__}). Try again in a minute.")
+    ai_match.store(job, result)
+    matching.apply(job, profile, s)
+    await session.commit()
+    return await _load(session, user, job_id)
 
 
 @router.post("/jobs/{job_id}/match", response_model=JobOut)

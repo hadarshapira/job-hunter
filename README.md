@@ -10,12 +10,12 @@ Several people can use it: everyone signs in with email + password or Google, an
 |---|---|
 | **Find jobs** | Twice a day (07:00 and 15:00, Israel time), and whenever you press **Find jobs now**: it searches LinkedIn, Greenhouse / Lever / Ashby company boards and JSearch (Google for Jobs). Then it keeps only the jobs that fit your titles, work mode and distance from home. |
 | **Add a job yourself** | Paste any job link (or **Share → JobHunter** on Android). Greenhouse, Lever, Ashby and LinkedIn links are read through their structured data; other sites through schema.org data, or the page title as a fallback. |
-| **Match grade** | Every job gets a 0-100 grade against your CV: skills 50%, experience 15%, seniority 15%, role 10%, location 10%. It also shows a table of skills you have, similar ones, and missing ones. |
+| **Match grade** | Every job gets a 0-100 grade against your CV: skills 50%, experience 15%, seniority 15%, role 10%, location 10%. It also shows a table of skills you have, similar ones, and missing ones. With an Anthropic API key, **Claude grades each job against your full CV** instead, like a recruiter, with the reasons (strengths, gaps, deal-breakers). |
 | **Tracker** | New → Saved → Applied → Screening → Interview → Offer / Rejected / Ghosted / Archived, with notes, a timeline and follow-up reminders (7 days after applying). |
 | **Gmail** | Every 10 minutes it reads new Inbox mail. "We got your application" → **Applied**, rejection → **Rejected** (both moved to the **Job search** label), interview invitation → **Interview** (stays in the Inbox). Every action can be undone. |
 | **Stats** | Pipeline counts, jobs by source, response rate. |
 
-Not built yet: AI explanations (Ollama), push alerts, tailored CV / cover letters, AllJobs / Drushim, cloud hosting.
+Not built yet: push alerts, tailored CV / cover letters, AllJobs / Drushim, cloud hosting.
 
 ## Quick start
 
@@ -67,7 +67,7 @@ All five parts run as Docker containers, defined in `docker-compose.yml`:
 
 ## Stack
 
-- **Backend:** Python 3.12, FastAPI, SQLAlchemy 2 (async) + Alembic, Postgres 17, Redis + arq, httpx, selectolax
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy 2 (async) + Alembic, Postgres 17, Redis + arq, httpx, selectolax, Anthropic SDK (Claude)
 - **Frontend:** React 18 + TypeScript, Vite + vite-plugin-pwa, TanStack Query, Tailwind CSS 4
 - **Hosting:** Docker Compose on this PC, Tailscale for phone access
 

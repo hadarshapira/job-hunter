@@ -109,6 +109,20 @@ The job page shows each part, the skills table (have / similar / missing, requir
 - you save Settings, your skills / years, or upload a CV (all your jobs at once)
 - **Recalculate** on a job page (`POST /api/jobs/{id}/match`)
 
+### AI grade (Claude)
+`services/ai_match.py`. The rule-based grade above is instant, but it only counts keywords: it can't tell a data *analyst* role from a data *engineer* role, and "Airflow, Dagster or Prefect" counts as three missing skills. The AI grade reads the job and your CV the way a recruiter would.
+
+Needs: `ANTHROPIC_API_KEY` in `.env`, an uploaded CV, and **Settings → AI match grade** switched on (per user, off by default).
+
+1. **Every 5 minutes** the worker (`ai_grade_pending`) looks for jobs of users who switched it on whose AI grade is missing or out of date. It skips *rejected*, *archived* and *ghosted* jobs, and grades up to 40 per run, 4 at a time.
+2. **The prompt:** fixed grading instructions + your CV + your preferences (titles, years, senior only, work modes, home and distances) as the system prompt, which is cached, so the jobs after the first cost less. The job's title, company, location, work mode, distance and description go in the message.
+3. **The answer** has a fixed structure: `score` 0-100, `verdict` (strong 85+, good 70-84, stretch 50-69, poor under 50), `summary`, `strengths`, `gaps`, `dealbreakers`. It's stored in `jobs.ai_match`, and **the job's match score becomes the AI score**. The rule-based details stay under *Keyword check* on the job page.
+4. **Out of date:** each grade stores a fingerprint of everything in the prompt (CV, preferences, job text, model, prompt version). Change any of them and the job shows its rule-based grade again (`stale`) until the next run re-grades it. Nothing else triggers a paid call, so each job is graded once and again only when its inputs change.
+5. **Grade with AI / Ask AI again** on a job page grades it right away (`POST /api/jobs/{id}/ai-match`), even if the switch is off.
+6. **Failures:** a network error or rate limit is retried next run. If the model declines, the API retries on a fallback model in the same call. If there's still no usable answer, the error is stored, shown on the job page, and not retried until the job or CV changes. A rejected API key stops the run (worker log: `API key rejected`).
+
+Model and effort: `AI_MODEL` (default `claude-sonnet-5-5`) and `AI_EFFORT` (`medium`) in `.env`. Changing either re-grades everything. Cost: about 1-2 cents per job on Sonnet. The worker log line `ai_match model=… in=… cached=… out=…` shows the tokens of each call.
+
 ## 5. Tracking an application
 
 `api.py: _apply_status, update_job, stats`
@@ -172,5 +186,6 @@ Every 10 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail
 |---|---|---|
 | 07:00 and 15:00 | `collect_all`: job search for all users (section 2) | 30 min |
 | every 10 minutes | `gmail_sync_all`: Gmail check for every connected user (section 6) | 5 min |
+| every 5 minutes (:02, :07, …) | `ai_grade_pending`: AI grades for new or changed jobs (section 4); nothing without an API key | 10 min |
 
 See what they did: `docker compose logs worker --since 1h`.

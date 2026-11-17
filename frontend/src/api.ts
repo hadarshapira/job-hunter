@@ -62,7 +62,22 @@ export interface Job extends JobSummary {
   parse_issues: string
   match: Match | null
   match_at: string | null
+  ai_match: AIMatch | null
   events: JobEvent[]
+}
+
+/** Claude's grade (services/ai_match.py). stale = the CV, settings or job changed since; a new grade is on its way. */
+export interface AIMatch {
+  score: number | null
+  verdict?: 'strong' | 'good' | 'stretch' | 'poor'
+  summary?: string
+  strengths?: string[]
+  gaps?: string[]
+  dealbreakers?: string[]
+  error?: string
+  model?: string
+  graded_at: string
+  stale?: boolean
 }
 
 export interface MatchPart { key: string; label: string; weight: number; score: number | null; detail: string }
@@ -79,6 +94,7 @@ export interface Match {
 export interface Profile {
   skills: string[]
   years_experience: number | null
+  ai_notes: string
   cv_filename: string
   cv_uploaded_at: string | null
   cv_years_guess: number | null
@@ -98,6 +114,8 @@ export interface SearchSettings {
   exclude_keywords: string[]
   senior_only: boolean
   sources: string[]
+  ai_grading: boolean
+  ai_available: boolean
 }
 
 export interface Company { id: number; ats: string; slug: string; name: string; mine: boolean; ok: boolean; last_error: string }
@@ -225,8 +243,9 @@ export const api = {
   removeCompany: (id: number) => req<void>(`/companies/${id}`, { method: 'DELETE' }),
   collectStatus: () => req<CollectStatus>('/collect'),
   rematch: (id: number) => req<Job>(`/jobs/${id}/match`, { method: 'POST' }),
+  aiMatch: (id: number) => req<Job>(`/jobs/${id}/ai-match`, { method: 'POST' }),
   profile: () => req<Profile>('/profile'),
-  saveProfile: (p: Pick<Profile, 'skills' | 'years_experience'>) => req<Profile>('/profile', { method: 'PUT', body: json(p) }),
+  saveProfile: (p: Pick<Profile, 'skills' | 'years_experience' | 'ai_notes'>) => req<Profile>('/profile', { method: 'PUT', body: json(p) }),
   uploadCv: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)

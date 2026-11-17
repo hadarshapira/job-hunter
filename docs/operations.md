@@ -27,10 +27,11 @@ Secrets live only in `.env`, which git ignores, so never commit it. Start from `
 | `GOOGLE_CLIENT_SECRET` | The same client's secret, needed for Gmail | Gmail section hidden |
 | `PUBLIC_URL` | The address Google sends Gmail sign-in back to, e.g. `https://myhost.ts.net` | Taken from the request's host (works through Tailscale) |
 | `JSEARCH_API_KEY` | RapidAPI key for JSearch (Google for Jobs) | JSearch skipped; LinkedIn + company boards only |
+| `ANTHROPIC_API_KEY` | Claude API key (console.anthropic.com) for the AI match grade | Only the rule-based grade |
 | `SIGNUP_ENABLED` | `false` stops new accounts | `true` |
 | `COOKIE_SECURE` | `true` once served only over HTTPS | `false` |
 
-Advanced (rarely changed, defaults in `backend/app/config.py`): `JSEARCH_CACHE_HOURS` (20), `JSEARCH_MIN_QUOTA` (15), `SESSION_DAYS` (30).
+Advanced (rarely changed, defaults in `backend/app/config.py`): `JSEARCH_CACHE_HOURS` (20), `JSEARCH_MIN_QUOTA` (15), `SESSION_DAYS` (30), `AI_MODEL` (`claude-sonnet-5-5`), `AI_EFFORT` (`medium`).
 
 ## Start, stop, status
 
@@ -71,7 +72,7 @@ The tests use in-memory SQLite and fake HTTP responses (`backend/tests/conftest.
 ## Database changes (migrations)
 
 1. Change the model in `backend/app/models.py`.
-2. Add the next migration file in `backend/migrations/versions/`, numbered after the last one, e.g. `0009_<what>.py` with `down_revision = "0008"`. Copy the style of an existing file.
+2. Add the next migration file in `backend/migrations/versions/`, numbered after the last one, e.g. `0010_<what>.py` with `down_revision = "0009"`. Copy the style of an existing file.
 3. Rebuild (`docker compose up -d --build --wait`). The API applies it on start.
 
 ```powershell
@@ -160,6 +161,7 @@ docker compose logs api | Select-String import_quality    # links that imported 
 | A job link imports badly | Follow [parsers.md](parsers.md): `docker compose exec api python -m app.tools.diagnose "<url>"` |
 | Gmail: "access was removed or expired" | Settings → Gmail → **Connect again**. Also happens if `SECRET_KEY` changed. |
 | Gmail didn't update a job | *Settings → Gmail → Recent job emails*. Not listed = it wasn't recognised as a job email. Listed as unmatched = link it to the job by hand. |
+| AI grades don't appear | Settings → AI match grade on? CV uploaded? `docker compose logs worker --since 30m | Select-String ai_match`. "API key rejected" = wrong or revoked key, or no credit left on the Anthropic account. |
 | Gmail "redirect_uri_mismatch" from Google | The address isn't registered: add it under Authorized redirect URIs (see Google setup) |
 
 Look at the data directly:

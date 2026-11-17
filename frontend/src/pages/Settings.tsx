@@ -58,6 +58,7 @@ function ChipsInput({ values, onChange, placeholder, suggestions }: { values: st
 export default function SettingsPage() {
   const qc = useQueryClient()
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings })
+  const profile = useQuery({ queryKey: ['profile'], queryFn: api.profile })
   const [draft, setDraft] = useState<SearchSettings | null>(null)
   useEffect(() => {
     if (settings.data && !draft) setDraft(settings.data)
@@ -170,6 +171,26 @@ export default function SettingsPage() {
           <ChipsInput values={draft.exclude_keywords} onChange={(v) => set('exclude_keywords', v)} placeholder="e.g. junior" />
         </section>
 
+        <section className="card grid gap-3 p-4">
+          <h2 className="font-medium">AI match grade</h2>
+          <p className="-mt-2 text-sm text-muted">
+            Claude reads your CV and each job and grades the fit the way a recruiter would, with the reasons. It replaces the
+            keyword grade, takes a few minutes for new jobs, and costs about 1–2 cents per job (graded again only if your CV,
+            these settings or the job change). Your CV and the job text are sent to Anthropic.
+          </p>
+          {draft.ai_available ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={draft.ai_grading} onChange={(e) => set('ai_grading', e.target.checked)} />
+              Grade my jobs with AI
+            </label>
+          ) : (
+            <p className="text-sm text-warn">Not set up on the server yet (ANTHROPIC_API_KEY in .env).</p>
+          )}
+          {draft.ai_grading && profile.data && !profile.data.cv_filename && (
+            <p className="text-sm text-warn">Upload your CV above. Without it the AI has nothing to compare the jobs with.</p>
+          )}
+        </section>
+
         {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
         <div className="sticky bottom-20 z-10 flex items-center gap-3 md:bottom-4">
           <button className="btn-primary shadow-lg" disabled={!dirty || save.isPending}>{save.isPending ? 'Saving…' : 'Save settings'}</button>
@@ -237,15 +258,15 @@ function Companies() {
 function ProfileSection() {
   const qc = useQueryClient()
   const profile = useQuery({ queryKey: ['profile'], queryFn: api.profile })
-  const [draft, setDraft] = useState<Pick<Profile, 'skills' | 'years_experience'> | null>(null)
+  const [draft, setDraft] = useState<Pick<Profile, 'skills' | 'years_experience' | 'ai_notes'> | null>(null)
   const [file, setFile] = useState<File | null>(null)
   useEffect(() => {
-    if (profile.data && !draft) setDraft({ skills: profile.data.skills, years_experience: profile.data.years_experience })
+    if (profile.data && !draft) setDraft({ skills: profile.data.skills, years_experience: profile.data.years_experience, ai_notes: profile.data.ai_notes })
   }, [profile.data, draft])
 
   const done = (p: Profile) => {
     qc.setQueryData(['profile'], p)
-    setDraft({ skills: p.skills, years_experience: p.years_experience })
+    setDraft({ skills: p.skills, years_experience: p.years_experience, ai_notes: p.ai_notes })
     qc.invalidateQueries({ queryKey: ['jobs'] })
     qc.invalidateQueries({ queryKey: ['job'] })
   }
@@ -255,7 +276,7 @@ function ProfileSection() {
   if (profile.isPending || !draft) return <section className="card mb-4 p-4 text-sm text-muted">Loading your profile…</section>
   if (profile.isError) return <section className="card mb-4 p-4 text-sm text-danger">{profile.error.message}</section>
   const p = profile.data
-  const dirty = JSON.stringify(draft) !== JSON.stringify({ skills: p.skills, years_experience: p.years_experience })
+  const dirty = JSON.stringify(draft) !== JSON.stringify({ skills: p.skills, years_experience: p.years_experience, ai_notes: p.ai_notes })
   const result = save.data ?? upload.data
 
   return (
@@ -309,6 +330,18 @@ function ProfileSection() {
         />
         <p className="text-xs text-muted">Add skills you know that your CV doesn't mention, and remove any it got wrong.</p>
       </div>
+
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">About me, for the AI grade</span>
+        <textarea
+          className="input min-h-28"
+          maxLength={3000}
+          placeholder="e.g. Grade me by my last data engineering role. I want mid / senior hands-on roles, not team lead."
+          value={draft.ai_notes}
+          onChange={(e) => setDraft({ ...draft, ai_notes: e.target.value })}
+        />
+        <span className="text-xs text-muted">The AI follows these when it grades: what to count, what to ignore, which roles you want. Changing them re-grades your open jobs.</span>
+      </label>
 
       {save.isError && <p className="text-sm text-danger">{save.error.message}</p>}
       <div className="flex flex-wrap items-center gap-3">
