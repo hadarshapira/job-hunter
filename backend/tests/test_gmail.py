@@ -35,6 +35,8 @@ def gmail_secret(monkeypatch):
     ("Application received", "Thanks for applying! If your experience fits, we will contact you to schedule an interview.", CONFIRMATION),
     ("Thank you for your application", "Due to the high volume of applications, unfortunately we can't respond to every applicant individually.", CONFIRMATION),
     ("קיבלנו את מועמדותך", "שלום, קיבלנו את קורות החיים שלך למשרת מהנדס/ת דאטה. ניצור קשר אם יהיה מתאים.", CONFIRMATION),
+    ("המועמדות שלך התקבלה במערכת", "היי, תודה על הזמן שהקדשת להגשת מועמדות למשרה. קורות החיים שלך עברו לצוות הגיוס "
+     "ובמידה שתהיה התאמה ניצור איתך קשר.", CONFIRMATION),
     ("Your application to Aidoc", "Thank you for your interest. Unfortunately, we have decided to move forward with other candidates.", REJECTION),
     ("Update on your application", "After careful consideration we will not be moving forward with your application for the role.", REJECTION),
     ("Update regarding your application at Northwind",
@@ -43,6 +45,11 @@ def gmail_secret(monkeypatch):
      "are more closely aligned with the current requirements of the role.\nWe truly appreciate your interest.", REJECTION),
     ("Your application", "Thanks for applying. We won't be moving forward with your application at this time.", REJECTION),
     ("Your application", "Thanks for applying. We have decided to go in a different direction for this role.", REJECTION),
+    ("Thank you from Contoso",
+     "Hi Alex,\n\nWe know that job hunting isn’t easy, and we sincerely thank you for your interest in Contoso.\n\n"
+     "After reviewing your CV, we made the decision not to move forward in the process this time around.\n\n"
+     "So many factors go into making a single hire, and this doesn’t rule out any future opportunities that may arise at Contoso.", REJECTION),
+    ("Your application", "Thanks for applying. We decided to proceed with a different candidate for this role.", REJECTION),
     ("עדכון לגבי מועמדותך", "תודה על התעניינותך במשרה. לצערנו החלטנו להתקדם עם מועמדים אחרים.", REJECTION),
     ("Interview - Data Engineer at Claroty", "We'd love to invite you to an interview. Please pick a time: https://calendly.com/x", INTERVIEW),
     ("Next steps", "Thanks for applying to the Data Platform role. We would like to schedule a phone screen with you this week.", INTERVIEW),
@@ -86,7 +93,6 @@ def _part(text: str, mime: str = "text/plain") -> dict:
 class FakeGoogle:
     def __init__(self):
         self.inbox: dict[str, dict] = {}
-        self.history: list[str] = []  # message ids added to the Inbox, in order
         self.labels = [{"id": "INBOX", "name": "INBOX"}]
         self.modified: list[tuple[str, list, list]] = []
         self.revoked = False
@@ -100,7 +106,6 @@ class FakeGoogle:
                         "headers": [{"name": "From", "value": sender}, {"name": "Subject", "value": subject}],
                         "parts": [_part(text), _part(f"<p>{text}</p>", "text/html")]},
         }
-        self.history.append(mid)
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         url, path = str(req.url), req.url.path
@@ -115,12 +120,7 @@ class FakeGoogle:
         assert req.headers["Authorization"] == "Bearer at"
         base = "/gmail/v1/users/me"
         if path == f"{base}/profile":
-            return httpx.Response(200, json={"emailAddress": "me@gmail.com", "historyId": str(len(self.history))})
-        if path == f"{base}/history":
-            start = int(req.url.params["startHistoryId"])
-            new = self.history[start:]
-            return httpx.Response(200, json={"historyId": str(len(self.history)),
-                                             "history": [{"messagesAdded": [{"message": {"id": m}}]} for m in new]})
+            return httpx.Response(200, json={"emailAddress": "me@gmail.com", "historyId": "1"})
         if path == f"{base}/messages":  # search: supports "in:inbox after:<unix seconds>"
             q = req.url.params["q"]
             after = int(q.split("after:")[1].split()[0]) if "after:" in q else 0
@@ -219,16 +219,37 @@ async def test_confirmation_rejection_interview(authed, google):
     assert j["status"] == "interview"
     assert any(e["kind"] == "email" and e["url"].endswith("#all/3") for e in j["events"])
 
-    label = next(lb["id"] for lb in google.labels if lb["name"] == "Job search")
-    assert google.inbox["1"]["labelIds"] == [label] and google.inbox["2"]["labelIds"] == [label]
+    ids = {lb["name"]: lb["id"] for lb in google.labels}
+    assert google.inbox["1"]["labelIds"] == [ids["Job search/Applied"]]
+    assert google.inbox["2"]["labelIds"] == [ids["Job search/Rejected"]]
+    assert "Job search" in ids  # the parent label exists, so Gmail shows the two nested under it
     assert google.inbox["3"]["labelIds"] == ["INBOX"]  # interview stays in the Inbox
     assert google.inbox["4"]["labelIds"] == ["INBOX"]
-    assert sum(1 for lb in google.labels if lb["name"] == "Job search") == 1
+    assert len(google.labels) == 4  # INBOX + parent + two sub-labels, each made once
 
-    # Nothing is done twice
-    google.history.extend(["1", "2"])
+    # Nothing is done twice; the emails put back in the Inbox are not handled again
+    google.inbox["1"]["labelIds"] = ["INBOX"]
     again = (await authed.post("/api/gmail/sync")).json()
     assert again["job_emails"] == 0 and len(google.modified) == 2
+
+
+async def test_every_check_rereads_todays_inbox(authed, google, monkeypatch):
+    # An email from earlier today that a check skipped (e.g. the rules didn't know its wording) is
+    # looked at again by the next check
+    from app.services.gmail import sync
+
+    jid = await add_job(authed, "Data Warehouse Tech Lead", "Contoso", status="applied")
+    await connect(authed, google)
+    google.add("1", "Thank you from Contoso", "After reviewing your CV, we made the decision not to move forward.",
+               sender="Team Contoso <jobs@contoso.example>", minutes_ago=90)
+    real = sync.classify
+    monkeypatch.setattr(sync, "classify", lambda *a: None)  # rules that miss it
+    assert (await authed.post("/api/gmail/sync")).json()["job_emails"] == 0
+    assert (await authed.post("/api/gmail/sync")).json()["job_emails"] == 0
+    monkeypatch.setattr(sync, "classify", real)  # rules fixed
+    r = (await authed.post("/api/gmail/sync")).json()
+    assert r["job_emails"] == 1 and r["updated"] == 1
+    assert (await job(authed, jid))["status"] == "rejected"
 
 
 async def test_never_moves_backwards_but_still_files_email(authed, google):

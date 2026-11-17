@@ -26,10 +26,13 @@ _IGNORE_TEXT = _rx(r"jobs? (you may|you might|that may|we think you)", r"recomme
 # The email must be about an application, a position or a candidacy
 _JOB_CONTEXT = _rx(r"\bappl(y|ied|ying|ication)", r"\bposition\b", r"\brole\b", r"\bcandida(te|cy)", r"\bopening\b",
                    r"\bvacanc", r"\binterview", r"\brecruit", r"\bhiring\b", r"\bjob\b", r"מועמד", r"משרה", r"משרת", r"תפקיד",
-                   r"קורות (ה)?חיים", r"ראיון", r"גיוס")
+                   r"\bcv\b", r"\bresume\b", r"\bhire\b", r"קורות (ה)?חיים", r"ראיון", r"גיוס")
 
 _REJECTION = _rx(
-    r"\bunfortunately\b", r"regret to (inform|let you know|tell you)", r"\bnot (be )?(moving|move) forward",
+    r"\bunfortunately\b", r"regret to (inform|let you know|tell you)",
+    # "not moving forward", "made the decision not to move forward", "not to proceed with your application"
+    r"\bnot (to )?(be )?(moving|move|proceed(ing)?|progress(ing)?|continu(e|ing)) (forward|further|with (your|you\b|the process))",
+    r"decision (not to|to not)", r"(won't|will not|not) be (taking|moving) (you|your application|your candidacy) (forward|further)",
     r"decided (not to|to (move|proceed|go|continue) (forward )?with (other|another|a different|the other|candidates?|applicants?|profiles?))",
     # "move forward with candidates whose experience is more closely aligned..." (no "other")
     r"(mov|proceed|go|continu|progress)(e|es|ed|ing)? (forward )?with (other |another |different )?(candidates?|applicants?|profiles?) (whose|who|that|with)",
@@ -65,11 +68,11 @@ _CONFIRMATION = _rx(
     r"application (received|submitted|confirmation)", r"your application (was|has been) sent to", r"successfully applied",
     r"we (got|have got) your application", r"thank you for (considering|choosing) .{0,40} (career|job|position|role)",
     r"קיבלנו את (קורות|מועמדות|פנייתך|בקשתך)", r"תודה (רבה )?על (הגשת|פנייתך|התעניינותך|מועמדותך|שליחת|ההתעניינות|שהגשת)",
-    r"מועמדותך (התקבלה|הוגשה|נקלטה)", r"קורות החיים (שלך )?(התקבלו|נקלטו|הגיעו)", r"פנייתך התקבלה",
+    r"(מועמדותך|המועמדות שלך) (התקבלה|הוגשה|נקלטה)", r"(הזמן שהקדשת|תודה) (ל|על )?הגשת (ה)?מועמדות", r"קורות החיים (שלך )?(התקבלו|נקלטו|הגיעו)", r"פנייתך התקבלה",
 )
 
 # "If you are not selected..." and "unfortunately we can't answer every applicant" are not rejections
-_MAYBE = _rx(r"if", r"should", r"in case", r"אם", r"במידה")
+_MAYBE = _rx(r"\bif\b", r"\bshould\b", r"\bin case\b", r"\bאם\b", r"\bבמידה\b")  # whole words: not "different", "specific"
 _VOLUME = _rx(r"high (volume|number)", r"(every|each|all) (applicants?|applications?|candidates?)", r"individually",
               r"respond to (all|every|each)", r"לכל (הפניות|המועמדים)")
 

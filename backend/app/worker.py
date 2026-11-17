@@ -1,6 +1,6 @@
 """Background worker (arq + Redis): scheduled tasks for all users.
 
-Job search at 07:00 and 15:00 Israel time, Gmail every 10 minutes, AI grades every 5 minutes.
+Job search at 07:00 and 15:00 Israel time, Gmail every 5 minutes, AI grades every 5 minutes.
 JSearch results are cached for 20 hours, so the paid-quota source is effectively queried once
 a day; company boards are fetched both times.
 """
@@ -36,8 +36,8 @@ class WorkerSettings:
     timezone = ZoneInfo("Asia/Jerusalem")
     cron_jobs = [
         cron(collect_all, hour={7, 15}, minute=0, timeout=1800, unique=True),
-        # New job emails every 10 minutes
-        cron(gmail_sync_all, minute=set(range(0, 60, 10)), timeout=300, unique=True),
+        # Job emails every 5 minutes (each check re-reads the last 24 hours of the Inbox, read or unread)
+        cron(gmail_sync_all, minute=set(range(0, 60, 5)), timeout=240, unique=True),
         # AI grades for new or changed jobs (does nothing without ANTHROPIC_API_KEY)
         cron(ai_grade_pending, minute=set(range(2, 60, 5)), timeout=600, unique=True),
     ]

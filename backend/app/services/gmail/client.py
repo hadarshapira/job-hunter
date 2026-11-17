@@ -1,4 +1,4 @@
-"""Small Gmail API client: new Inbox mail, reading a message, labels."""
+"""Small Gmail API client: searching the Inbox, reading a message, labels."""
 
 import base64
 import re
@@ -10,10 +10,6 @@ import httpx
 from selectolax.lexbor import LexborHTMLParser
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
-
-
-class HistoryExpired(Exception):
-    """Gmail no longer has history from the saved point (it keeps about a week)."""
 
 
 @dataclass
@@ -78,48 +74,51 @@ class Gmail:
     def __init__(self, client: httpx.AsyncClient, token: str):
         self.client = client
         self.headers = {"Authorization": f"Bearer {token}"}
+        self._label_ids: dict[str, str] | None = None  # label name -> id, read once per check
 
     async def _req(self, method: str, path: str, **kw) -> dict:
         r = await self.client.request(method, f"{API}{path}", headers=self.headers, timeout=30, **kw)
-        if r.status_code == 404 and path.startswith("/history"):
-            raise HistoryExpired()
         r.raise_for_status()
         return r.json() if r.content else {}
 
     async def profile(self) -> dict:
         return await self._req("GET", "/profile")
 
-    async def new_inbox_ids(self, start_history_id: str) -> tuple[list[str], str]:
-        """Ids of messages added to the Inbox since the saved point, and the new point."""
+    async def search_ids(self, query: str, limit: int = 500) -> list[str]:
         ids: list[str] = []
-        params = {"startHistoryId": start_history_id, "historyTypes": "messageAdded", "labelId": "INBOX"}
-        latest = start_history_id
+        params = {"q": query, "maxResults": min(limit, 500)}
         while True:
-            data = await self._req("GET", "/history", params=params)
-            latest = data.get("historyId", latest)
-            for h in data.get("history", []):
-                for added in h.get("messagesAdded", []):
-                    mid = added["message"]["id"]
-                    if mid not in ids:
-                        ids.append(mid)
-            if not data.get("nextPageToken"):
-                return ids, latest
+            data = await self._req("GET", "/messages", params=params)
+            ids += [m["id"] for m in data.get("messages", [])]
+            if len(ids) >= limit or not data.get("nextPageToken"):
+                return ids[:limit]
             params["pageToken"] = data["nextPageToken"]
-
-    async def search_ids(self, query: str, limit: int = 100) -> list[str]:
-        data = await self._req("GET", "/messages", params={"q": query, "maxResults": limit})
-        return [m["id"] for m in data.get("messages", [])]
 
     async def message(self, message_id: str) -> Mail:
         return parse_message(await self._req("GET", f"/messages/{message_id}", params={"format": "full"}))
 
+    async def _labels(self) -> dict[str, str]:
+        if self._label_ids is None:
+            self._label_ids = {lb["name"]: lb["id"] for lb in (await self._req("GET", "/labels")).get("labels", [])}
+        return self._label_ids
+
+    def forget_labels(self) -> None:
+        self._label_ids = None
+
+    async def existing_label_ids(self, names: list[str]) -> list[str]:
+        labels = await self._labels()
+        return [labels[n] for n in names if n in labels]
+
     async def label_id(self, name: str) -> str:
-        """Id of the label with this name, created if it doesn't exist."""
-        for lb in (await self._req("GET", "/labels")).get("labels", []):
-            if lb.get("name") == name:
-                return lb["id"]
+        """Id of the label with this name, created if it doesn't exist. "A/B" is label B nested under A."""
+        labels = await self._labels()
+        if name in labels:
+            return labels[name]
+        if "/" in name:
+            await self.label_id(name.rsplit("/", 1)[0])  # Gmail shows "A/B" nested only when "A" exists
         created = await self._req("POST", "/labels", json={
             "name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"})
+        labels[name] = created["id"]
         return created["id"]
 
     async def modify(self, message_id: str, add: list[str], remove: list[str]) -> None:

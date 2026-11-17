@@ -152,6 +152,7 @@ export interface GmailStatus {
   last_sync_at: string | null
   last_error: string
   label: string
+  labels: Partial<Record<GmailKind, string>>
 }
 export type GmailKind = 'confirmation' | 'rejection' | 'interview'
 export interface GmailMessage {
@@ -241,7 +242,7 @@ export const api = {
   companies: () => req<Company[]>('/companies'),
   addCompany: (board: string, name = '') => req<Company>('/companies', { method: 'POST', body: json({ board, name }) }),
   removeCompany: (id: number) => req<void>(`/companies/${id}`, { method: 'DELETE' }),
-  collectStatus: () => req<CollectStatus>('/collect'),
+  collectStatus: () => req<CollectStatus>('/find-jobs'),
   rematch: (id: number) => req<Job>(`/jobs/${id}/match`, { method: 'POST' }),
   aiMatch: (id: number) => req<Job>(`/jobs/${id}/ai-match`, { method: 'POST' }),
   profile: () => req<Profile>('/profile'),
@@ -257,7 +258,7 @@ export const api = {
   gmailMessages: () => req<GmailMessage[]>('/gmail/messages'),
   gmailAssign: (id: number, jobId: number) => req<GmailMessage>(`/gmail/messages/${id}/assign`, { method: 'POST', body: json({ job_id: jobId }) }),
   gmailUndo: (id: number) => req<GmailMessage>(`/gmail/messages/${id}/undo`, { method: 'POST' }),
-  collectNow: () => req<{ started: boolean; detail?: string }>('/collect', { method: 'POST' }),
+  collectNow: () => req<{ started: boolean; detail?: string }>('/find-jobs', { method: 'POST' }),
 }
 
 export const isDue = (d: string | null) => !!d && d <= new Date().toISOString().slice(0, 10)

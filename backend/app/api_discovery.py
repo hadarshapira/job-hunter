@@ -167,7 +167,7 @@ class CollectStatus(BaseModel):
     last_stats: dict | None = None  # per source: found / added / skipped and why
 
 
-@router.get("/collect", response_model=CollectStatus)
+@router.get("/find-jobs", response_model=CollectStatus)
 async def collect_status(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     run = await session.scalar(
         select(CollectionRun).where(CollectionRun.user_id == user.id).order_by(CollectionRun.started_at.desc())
@@ -193,7 +193,7 @@ async def _run_for(user_id: int) -> None:
     await ingest.collect(SessionLocal, [user_id])
 
 
-@router.post("/collect", status_code=202)
+@router.post("/find-jobs", status_code=202)
 async def collect_now(
     background: BackgroundTasks, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
 ):

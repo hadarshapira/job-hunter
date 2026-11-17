@@ -1,8 +1,10 @@
-"""Read new Inbox mail, update job statuses and file job emails under the user's label.
+"""Read Inbox mail, update job statuses and file job emails under the user's labels.
 
-Runs every 10 minutes in the worker and from the "Check now" button. The first check after
-connecting also looks back LOOKBACK days, so replies that came just before connecting count too. Only job emails are stored, and only their sender,
-subject, date and what was done.
+Runs every 5 minutes in the worker and from the "Check now" button. Every check reads the whole
+Inbox of the last RECHECK hours (not only mail that came since the last check), so an email the rules
+missed once is looked at again after the rules are fixed. The first check after connecting looks back
+LOOKBACK days, so replies that came just before connecting count too. Only job emails are stored, and
+only their sender, subject, date and what was done.
 """
 
 import logging
@@ -19,13 +21,18 @@ from app.services import matching
 from app.services.dedup import dedup_key
 from app.services.gmail import oauth
 from app.services.gmail.classify import CONFIRMATION, INTERVIEW, LABELS, REJECTION, classify
-from app.services.gmail.client import Gmail, HistoryExpired, Mail
+from app.services.gmail.client import Gmail, Mail
 from app.services.gmail.match import best_job, guess, score
 
 log = logging.getLogger("jobhunter.gmail")
-LABEL_NAME = "Job search"
-MOVE_KINDS = {CONFIRMATION, REJECTION}  # interview emails stay in the Inbox
+LABEL_NAME = "Job search"  # parent label; each kind of email goes to its own sub-label
+KIND_LABELS = {
+    CONFIRMATION: f"{LABEL_NAME}/Applied",
+    REJECTION: f"{LABEL_NAME}/Rejected",
+}
+MOVE_KINDS = set(KIND_LABELS)  # interview emails stay in the Inbox
 LOOKBACK = timedelta(days=14)  # how far back the first check after connecting reads
+RECHECK = timedelta(hours=24)  # every check reads the whole Inbox this far back (always covers all of today)
 
 # Never move a job backwards: which statuses each kind of email may change
 _FROM = {
@@ -45,21 +52,15 @@ async def open_gmail(client: httpx.AsyncClient, settings: Settings, account: Gma
     return Gmail(client, token)
 
 
-async def _label(gmail: Gmail, account: GmailAccount) -> str:
-    if not account.label_id:
-        account.label_id = await gmail.label_id(LABEL_NAME)
-    return account.label_id
-
-
-async def _move(gmail: Gmail, account: GmailAccount, msg: GmailMessage) -> None:
-    label = await _label(gmail, account)
+async def _move(gmail: Gmail, msg: GmailMessage) -> None:
+    name = KIND_LABELS[msg.kind]
     try:
-        await gmail.modify(msg.gmail_id, add=[label], remove=["INBOX"])
+        await gmail.modify(msg.gmail_id, add=[await gmail.label_id(name)], remove=["INBOX"])
     except httpx.HTTPStatusError as e:
         if e.response.status_code != 400:
             raise
-        account.label_id = None  # label was deleted in Gmail: make it again
-        await gmail.modify(msg.gmail_id, add=[await _label(gmail, account)], remove=["INBOX"])
+        gmail.forget_labels()  # label was deleted in Gmail meanwhile: make it again
+        await gmail.modify(msg.gmail_id, add=[await gmail.label_id(name)], remove=["INBOX"])
     msg.moved = True
 
 
@@ -88,7 +89,7 @@ async def act(session: AsyncSession, gmail: Gmail, account: GmailAccount, msg: G
         msg.action = "no_change"
     job.updated_at = datetime.now(timezone.utc)
     if msg.kind in MOVE_KINDS:
-        await _move(gmail, account, msg)
+        await _move(gmail, msg)
 
 
 async def _jobs(session: AsyncSession, user_id: int) -> list[Job]:
@@ -130,18 +131,15 @@ async def sync_account(session: AsyncSession, client: httpx.AsyncClient, setting
     summary = {"checked": 0, "job_emails": 0, "updated": 0, "unmatched": 0}
     try:
         gmail = await open_gmail(client, settings, account)
-        # Which messages to look at:
-        # - normally Gmail's history since the saved point (history_id): only mail added to the Inbox since
-        # - the first check after connecting (no history_id), or when Gmail dropped that old history:
-        #   a search of the Inbox since the last check, or LOOKBACK days before connecting
-        try:
-            ids, latest = await gmail.new_inbox_ids(account.history_id) if account.history_id else ([], None)
-            if latest is None:
-                raise HistoryExpired()
-        except HistoryExpired:
-            since = account.last_sync_at or (_aware(account.connected_at) - LOOKBACK)
-            ids = await gmail.search_ids(f"in:inbox after:{int(since.timestamp())}")
-            latest = (await gmail.profile()).get("historyId")
+        # Which messages to look at: everything in the Inbox from the last RECHECK hours (emails already
+        # handled are skipped below). The first check after connecting goes back LOOKBACK days, and if
+        # checks stopped for a while (laptop off) it goes back to the last check.
+        since = datetime.now(timezone.utc) - RECHECK
+        if account.last_sync_at is None:
+            since = _aware(account.connected_at) - LOOKBACK
+        elif _aware(account.last_sync_at) < since:
+            since = _aware(account.last_sync_at) - timedelta(minutes=10)
+        ids = await gmail.search_ids(f"in:inbox after:{int(since.timestamp())}")
         done = set((await session.scalars(select(GmailMessage.gmail_id).where(
             GmailMessage.user_id == account.user_id, GmailMessage.gmail_id.in_(ids)))).all()) if ids else set()
         oldest = _aware(account.connected_at) - LOOKBACK
@@ -162,7 +160,6 @@ async def sync_account(session: AsyncSession, client: httpx.AsyncClient, setting
                 summary["job_emails"] += 1
                 summary["unmatched" if msg.action == "unmatched" else "updated"] += 1
             await session.commit()
-        account.history_id = latest
         account.last_error = ""
     except oauth.GmailAuthError as e:
         account.last_error = str(e)
@@ -199,8 +196,9 @@ async def undo(session: AsyncSession, gmail: Gmail | None, msg: GmailMessage) ->
     job = await session.scalar(select(Job).where(Job.id == msg.job_id, Job.user_id == msg.user_id)
                                .options(selectinload(Job.events))) if msg.job_id else None
     if gmail and msg.moved:
-        account = await session.get(GmailAccount, msg.user_id)
-        await gmail.modify(msg.gmail_id, add=["INBOX"], remove=[account.label_id] if account and account.label_id else [])
+        # Older emails were filed under the parent label, newer ones under a sub-label: take off whichever exist
+        ours = await gmail.existing_label_ids([LABEL_NAME, *KIND_LABELS.values()])
+        await gmail.modify(msg.gmail_id, add=["INBOX"], remove=ours)
         msg.moved = False
     if job is not None:
         if msg.action == "created_job":

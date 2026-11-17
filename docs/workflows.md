@@ -29,7 +29,7 @@ This document follows each feature from the button you press to the rows saved i
 
 ### When it runs
 - **Scheduled:** 07:00 and 15:00 Israel time, for all users at once (`worker.py`).
-- **Find jobs now** (Jobs page → *New for you*): `POST /api/collect` runs it for you only, in the background. While a search is running you can't start another (a run older than 10 minutes counts as stuck), and there's a 2-minute pause between searches. The page checks `GET /api/collect` every 3 seconds until it finishes.
+- **Find jobs now** (Jobs page → *New for you*): `POST /api/find-jobs` runs it for you only, in the background. While a search is running you can't start another (a run older than 10 minutes counts as stuck), and there's a 2-minute pause between searches. The page checks `GET /api/find-jobs` every 3 seconds until it finishes. (Not `/api/collect`: ad blockers block that path as Google Analytics.)
 
 ### Step by step
 1. **Start:** a `collection_runs` row is created for each user. Each user's search settings are loaded, and defaults are created for new users.
@@ -152,9 +152,9 @@ Model and effort: `AI_MODEL` (default `claude-sonnet-5-5`) and `AI_EFFORT` (`med
 4. The **first check** reads your Inbox from the **last 14 days** (`sync.LOOKBACK`), so a reply that came just before you connected still counts.
 
 ### Every check
-Every 10 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail/sync`):
+Every 5 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail/sync`):
 
-1. **Which mail:** Inbox mail added since the last check, using Gmail's history. If Gmail no longer has that history, which happens after about a week, it searches the Inbox since the last check instead. Mail that was already handled, mail you sent yourself, and mail older than the 14-day window are skipped.
+1. **Which mail:** everything in the Inbox from the **last 24 hours** (`sync.RECHECK`), read or unread, not only mail that arrived since the last check. So an email the rules missed once is looked at again by the next check after the rules are fixed. If checks stopped for longer (laptop off) it goes back to the last check. Mail that was already handled, mail you sent yourself, and mail older than the 14-day window are skipped.
 2. **Is it a job email?** (`classify.py`, English and Hebrew rules). It must mention an application, position, role or candidacy. Job alerts and "jobs you may like" newsletters are ignored. Then it checks, in this order:
    - **Rejection:** "unfortunately", "not moving forward", "לצערנו"… Sentences like "*if* you're not selected" or "we can't reply to *every* applicant" don't count.
    - **Interview invitation:** "we'd like to schedule a call", a Calendly link, "נשמח לזמן אותך"… "*If* your profile fits *we'll contact you*" doesn't count.
@@ -185,7 +185,7 @@ Every 10 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail
 | When | Task | Time limit |
 |---|---|---|
 | 07:00 and 15:00 | `collect_all`: job search for all users (section 2) | 30 min |
-| every 10 minutes | `gmail_sync_all`: Gmail check for every connected user (section 6) | 5 min |
+| every 5 minutes | `gmail_sync_all`: Gmail check for every connected user (section 6) | 4 min |
 | every 5 minutes (:02, :07, …) | `ai_grade_pending`: AI grades for new or changed jobs (section 4); nothing without an API key | 10 min |
 
 See what they did: `docker compose logs worker --since 1h`.

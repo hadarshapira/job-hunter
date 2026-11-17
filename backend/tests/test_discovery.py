@@ -384,9 +384,9 @@ async def test_collect_endpoint(authed, monkeypatch):
         started.append(user_id)
 
     monkeypatch.setattr(api_discovery, "_run_for", fake_run)
-    status = (await authed.get("/api/collect")).json()
+    status = (await authed.get("/api/find-jobs")).json()
     assert status["running"] is False and status["last_started"] is None
-    assert (await authed.post("/api/collect")).json() == {"started": True}
+    assert (await authed.post("/api/find-jobs")).json() == {"started": True}
     assert len(started) == 1
 
 

@@ -35,6 +35,7 @@ class GmailStatus(BaseModel):
     last_sync_at: datetime | None = None
     last_error: str = ""
     label: str = gsync.LABEL_NAME
+    labels: dict[str, str] = gsync.KIND_LABELS  # where each kind of email is moved
 
 
 class GmailMessageOut(BaseModel):
@@ -124,7 +125,7 @@ async def callback(request: Request, state: str = "", code: str = "", error: str
     acc = await session.get(GmailAccount, uid) or GmailAccount(user_id=uid)
     acc.email = profile.get("emailAddress", "")
     acc.refresh_token = oauth.encrypt(settings, tokens["refresh_token"])
-    acc.history_id = None  # first check reads the last few days (sync.LOOKBACK), then follows new mail
+    acc.history_id = None  # no longer used: every check searches the Inbox
     acc.connected_at = datetime.now(timezone.utc)
     acc.last_sync_at = None
     acc.last_error = ""

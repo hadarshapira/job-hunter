@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, SOURCES, type GmailMessage, type JobSummary, type Profile, type SearchSettings } from '../api'
+import { api, SOURCES, type GmailMessage, type GmailStatus, type JobSummary, type Profile, type SearchSettings } from '../api'
 import { Empty, PageTitle } from '../components'
 import { FindJobsButton } from './Jobs'
 
@@ -369,9 +369,9 @@ const KIND_LABEL: Record<GmailMessage['kind'], string> = {
   interview: '🎉 Interview',
 }
 
-function actionText(m: GmailMessage, label: string) {
+function actionText(m: GmailMessage, s: GmailStatus) {
   const job = m.job_id ? `${m.job_title} · ${m.job_company}` : ''
-  const moved = m.moved ? ` · moved to ${label}` : ''
+  const moved = m.moved ? ` · moved to ${s.labels?.[m.kind] ?? s.label}` : ''
   switch (m.action) {
     case 'status_changed': return `Updated ${job}${moved}`
     case 'created_job': return `Added ${job} as Applied${moved}`
@@ -412,8 +412,8 @@ function GmailSection() {
       <div>
         <h2 className="font-medium">Gmail</h2>
         <p className="text-sm text-muted">
-          Reads new mail in your Inbox every 10 minutes (the first check also reads the last 14 days). &ldquo;We got your application&rdquo; marks the job Applied and rejections mark it Rejected; both
-          emails move to the <b>{s.label}</b> label. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
+          Every 5 minutes it reads your Inbox from the last 24 hours, read or unread (the first check also reads the last 14 days). &ldquo;We got your application&rdquo; marks the job Applied and
+          moves the email to <b>{s.labels?.confirmation ?? s.label}</b>; rejections mark it Rejected and move to <b>{s.labels?.rejection ?? s.label}</b>. Interview invitations mark the job Interview and stay in your Inbox. Other mail isn&rsquo;t touched or saved.
         </p>
       </div>
       {notice && (
@@ -464,7 +464,7 @@ function GmailSection() {
                     </div>
                     <div className="truncate">&ldquo;{m.subject}&rdquo;</div>
                     <div className="truncate text-xs text-muted">{m.sender}</div>
-                    <div className={`mt-1 text-xs ${m.action === 'unmatched' ? 'text-warn' : 'text-muted'}`}>{actionText(m, s.label)}</div>
+                    <div className={`mt-1 text-xs ${m.action === 'unmatched' ? 'text-warn' : 'text-muted'}`}>{actionText(m, s)}</div>
                     <div className="mt-1 flex flex-wrap gap-3 text-xs">
                       {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-primary underline">Open in Gmail</a>}
                       {['status_changed', 'created_job', 'no_change'].includes(m.action) && (

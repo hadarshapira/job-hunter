@@ -7,7 +7,7 @@ Python 3.12, FastAPI, async SQLAlchemy 2 on Postgres, Alembic migrations, arq wo
 ```
 app/
 ├── main.py              FastAPI app: includes the routers below
-├── worker.py            Scheduled tasks (arq): job search 07:00/15:00, Gmail every 10 min, AI grades every 5 min
+├── worker.py            Scheduled tasks (arq): job search 07:00/15:00, Gmail every 5 min, AI grades every 5 min
 ├── config.py            Settings from .env (pydantic-settings)
 ├── db.py                Database engine and session
 ├── models.py            All tables (SQLAlchemy models)
@@ -15,7 +15,7 @@ app/
 │
 ├── auth.py              /api/auth/*: sign-up, login, Google sign-in, session cookie, current_user
 ├── api.py               /api/jobs*, /api/stats: list, add, import, edit, notes, delete
-├── api_discovery.py     /api/settings, /api/companies, /api/collect: search settings and "Find jobs now"
+├── api_discovery.py     /api/settings, /api/companies, /api/find-jobs: search settings and "Find jobs now"
 ├── api_profile.py       /api/profile*: CV upload, skills, years; /api/jobs/{id}/match
 ├── api_gmail.py         /api/gmail/*: connect, check now, recent emails, assign, undo, disconnect
 │
