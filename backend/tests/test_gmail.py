@@ -37,6 +37,12 @@ def gmail_secret(monkeypatch):
     ("קיבלנו את מועמדותך", "שלום, קיבלנו את קורות החיים שלך למשרת מהנדס/ת דאטה. ניצור קשר אם יהיה מתאים.", CONFIRMATION),
     ("Your application to Aidoc", "Thank you for your interest. Unfortunately, we have decided to move forward with other candidates.", REJECTION),
     ("Update on your application", "After careful consideration we will not be moving forward with your application for the role.", REJECTION),
+    ("Update regarding your application at Northwind",
+     "Dear Alex\n\nThank you for your interest in the Senior Data Engineer position at Northwind and for taking the time to apply.\n\n"
+     "After carefully reviewing your application, we have decided to move forward with candidates whose experience and background "
+     "are more closely aligned with the current requirements of the role.\nWe truly appreciate your interest.", REJECTION),
+    ("Your application", "Thanks for applying. We won't be moving forward with your application at this time.", REJECTION),
+    ("Your application", "Thanks for applying. We have decided to go in a different direction for this role.", REJECTION),
     ("עדכון לגבי מועמדותך", "תודה על התעניינותך במשרה. לצערנו החלטנו להתקדם עם מועמדים אחרים.", REJECTION),
     ("Interview - Data Engineer at Claroty", "We'd love to invite you to an interview. Please pick a time: https://calendly.com/x", INTERVIEW),
     ("Next steps", "Thanks for applying to the Data Platform role. We would like to schedule a phone screen with you this week.", INTERVIEW),

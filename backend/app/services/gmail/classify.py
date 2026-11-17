@@ -30,7 +30,12 @@ _JOB_CONTEXT = _rx(r"\bappl(y|ied|ying|ication)", r"\bposition\b", r"\brole\b", 
 
 _REJECTION = _rx(
     r"\bunfortunately\b", r"regret to (inform|let you know|tell you)", r"\bnot (be )?(moving|move) forward",
-    r"decided (not to|to (move|proceed|go|continue) (forward )?with (other|another|a different))",
+    r"decided (not to|to (move|proceed|go|continue) (forward )?with (other|another|a different|the other|candidates?|applicants?|profiles?))",
+    # "move forward with candidates whose experience is more closely aligned..." (no "other")
+    r"(mov|proceed|go|continu|progress)(e|es|ed|ing)? (forward )?with (other |another |different )?(candidates?|applicants?|profiles?) (whose|who|that|with)",
+    r"(more|most|better) (closely )?(aligned|suited|match(ing|es)?) (with|to|for) (the|our|this|current)",
+    r"(won't|will not|wouldn't|would not|can't|cannot|are unable to) (be )?(mov|proceed|progress|continu)(e|ing) (forward )?with (your|you\b)",
+    r"(go|going) (in|with) a different direction",
     r"(will|would) not be (proceeding|moving|continuing|progressing)", r"not (been )?selected", r"other candidates? whose",
     r"(position|role|job) (has|have) (been|now been) filled", r"no longer (considering|being considered|available)",
     r"pursue other candidates", r"(isn't|is not|wasn't|was not) the right (fit|match)", r"decided to pursue",
