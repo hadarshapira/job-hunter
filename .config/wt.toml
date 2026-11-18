@@ -1,22 +1,22 @@
-# Worktrunk (https://worktrunk.dev) settings for this repo: one git worktree per branch.
-#   wt switch -c my-change   new branch in ../job-hunter.my-change, with .env copied in
-#   wt merge                 tests pass -> merge into main -> redeploy the live app
-#   wt remove                delete the worktree and its Docker test images
+# Worktrunk (https://worktrunk.dev) settings for this repo: one git worktree per branch, one pull request per change.
+#   wt switch -c my-change                 new branch in ../job-hunter.my-change, with .env copied in
+#   wt hook pre-merge --foreground         run the tests on this branch (isolated Docker project)
+#   git push -u origin my-change; gh pr create
+#   ...review and merge the pull request on GitHub, then deploy from the main folder:
+#   git pull; docker compose up -d --build --wait
+#   wt remove my-change                    delete the worktree and its Docker test images
 #
 # docker-compose.yml names the project "job-hunter", so a plain `docker compose up` in a worktree
 # would replace the running app. Worktree hooks use their own project name (-p jh-<branch>) and
-# only build and test; the live app is deployed from the main worktree after a merge.
+# only build and test; the live app is deployed from the main folder after a pull request is merged.
 
 # New worktree: copy git-ignored local files listed in .worktreeinclude (.env holds the secrets)
 pre-start = "wt step copy-ignored"
 
-# Before merging: run the tests on this branch's code, isolated from the live containers
+# Tests on this branch's code, isolated from the live containers. Run before opening a pull request;
+# also runs automatically if a branch is ever merged locally with `wt merge`.
 [pre-merge]
 test = "docker compose -p jh-{{ branch | sanitize | lower }} build api -q && docker compose -p jh-{{ branch | sanitize | lower }} run --rm --no-deps api pytest -q"
-
-# After merging into main: rebuild and restart the live app from the main worktree
-[post-merge]
-deploy = "cd {{ primary_worktree_path }} && docker compose up -d --build --wait"
 
 # Worktree removed: delete its Docker test containers, network and images
 [post-remove]
