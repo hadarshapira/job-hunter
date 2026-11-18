@@ -1,0 +1,2 @@
+# Git-ignored files `wt step copy-ignored` copies into a new worktree
+.env
