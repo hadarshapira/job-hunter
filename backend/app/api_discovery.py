@@ -190,7 +190,7 @@ def _age(ts: datetime) -> timedelta:
 
 
 async def _run_for(user_id: int) -> None:
-    await ingest.collect(SessionLocal, [user_id])
+    await ingest.collect(SessionLocal, [user_id], remove_closed=True)
 
 
 @router.post("/find-jobs", status_code=202)

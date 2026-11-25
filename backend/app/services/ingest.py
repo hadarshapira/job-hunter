@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.collectors import Posting
 from app.collectors import boards, jsearch, linkedin
 from app.models import COLLECT_SOURCES, CollectionRun, Company, Event, Job, Status, User, UserProfile, UserSettings
-from app.services import matching
+from app.services import availability, matching
 from app.services.dedup import dedup_key, loose_key
 from app.services.filters import location_decision, title_matches
 from app.services.geo import geocode, haversine_km, in_israel
@@ -205,8 +205,12 @@ async def _add_for_user(
     return added
 
 
-async def collect(maker: async_sessionmaker, user_ids: list[int] | None = None, *, client: httpx.AsyncClient | None = None) -> dict:
-    """Run one collection. user_ids=None means all users (the scheduled run)."""
+async def collect(
+    maker: async_sessionmaker, user_ids: list[int] | None = None, *, client: httpx.AsyncClient | None = None,
+    remove_closed: bool = False,
+) -> dict:
+    """Run one collection. user_ids=None means all users (the scheduled run).
+    remove_closed: first delete the users' jobs whose posting is gone ("Find jobs now")."""
     own = client is None
     client = client or httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT})
     errors: list[str] = []
@@ -219,6 +223,11 @@ async def collect(maker: async_sessionmaker, user_ids: list[int] | None = None, 
             all_settings = [await settings_for(session, uid) for uid in ids]
             await session.commit()
 
+            closed: dict[int, dict] = {}
+            if remove_closed:
+                for uid in ids:
+                    closed[uid] = await availability.remove_unavailable(session, client, uid)
+
             wanted = {src for s in all_settings for src in enabled_sources(s)}
             shared: dict = {}
             postings = await _gather_postings(session, client, all_settings, errors, wanted, shared)
@@ -230,6 +239,8 @@ async def collect(maker: async_sessionmaker, user_ids: list[int] | None = None, 
                 added = await _add_for_user(session, s.user_id, s, postings, funnel)
                 run = runs[s.user_id]
                 run.stats = {"sources": funnel, "linkedin": shared}
+                if s.user_id in closed:
+                    run.stats["closed"] = closed[s.user_id]
                 run.added, run.seen, run.errors = added, len(postings), "\n".join(errors)
                 run.finished_at = datetime.now(timezone.utc)
                 result[s.user_id] = added

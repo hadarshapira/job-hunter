@@ -131,6 +131,8 @@ export interface CollectStatus {
   last_stats: {
     sources: Record<string, Partial<Record<'found' | 'added' | 'already_have' | 'title' | 'location' | 'duplicate', number>>>
     linkedin: { linkedin_found?: number; linkedin_title_skip?: number; linkedin_read?: number; linkedin_deferred?: number }
+    // Jobs removed because their posting closed (only on "Find jobs now")
+    closed?: { checked: number; removed: number; removed_jobs: { title: string; company: string }[]; linkedin_limited: boolean }
   } | null
 }
 
