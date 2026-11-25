@@ -47,7 +47,22 @@ Data lives in the Docker volume `job-hunter_dbdata`. `docker compose down` keeps
 
 ## Deploying a change
 
-After editing code:
+Every change goes through a pull request. With [Worktrunk](https://worktrunk.dev) (`winget install max-sixty.worktrunk`), each change gets its own folder and branch:
+
+```powershell
+wt switch -c my-change                # new worktree in ..\job-hunter.my-change, .env copied in (.worktreeinclude)
+# ...edit, commit...
+wt hook pre-merge --foreground        # tests, in an isolated Docker project (jh-my-change)
+git push -u origin my-change
+gh pr create --fill                   # open the pull request; review and merge it on GitHub
+# after the merge, in the main folder:
+git pull; docker compose up -d --build --wait   # deploy
+wt remove my-change                   # delete the worktree, branch and its test images
+```
+
+The hooks are in `.config/wt.toml`; Worktrunk asks once to approve them. Don't run a plain `docker compose up` inside a worktree: the compose project is named `job-hunter`, so it would replace the live app with that branch.
+
+Without Worktrunk, after editing code:
 
 ```powershell
 docker compose build api -q; docker compose run --rm --no-deps api pytest -q   # 1. tests must pass
