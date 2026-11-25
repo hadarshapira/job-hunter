@@ -79,8 +79,7 @@ async def _users(maker) -> tuple[int, int]:
         return a.id, b.id
 
 
-async def test_removes_only_closed_unhandled_jobs_of_this_user(maker, monkeypatch):
-    monkeypatch.setattr(availability, "LINKEDIN_DELAY", (0, 0))
+async def test_removes_only_closed_unhandled_jobs_of_this_user(maker, no_waits):
     a, b = await _users(maker)
     async with maker() as s:
         s.add_all([
@@ -110,8 +109,17 @@ async def test_removes_only_closed_unhandled_jobs_of_this_user(maker, monkeypatc
         assert checked.checked_at is not None
 
 
-async def test_linkedin_limit_stops_checking_linkedin(maker, monkeypatch):
+@pytest.fixture
+def no_waits(monkeypatch):
     monkeypatch.setattr(availability, "LINKEDIN_DELAY", (0, 0))
+    monkeypatch.setattr(availability, "LIMIT_WAIT", (0, 0))
+
+
+def li_job(i: int, **kw) -> Job:
+    return job(f"https://www.linkedin.com/jobs/view/{i}/", "linkedin", f"linkedin:{i}", **kw)
+
+
+async def test_linkedin_limit_stops_after_several_refused_jobs(maker, no_waits):
     a, _ = await _users(maker)
     calls = []
 
@@ -120,11 +128,67 @@ async def test_linkedin_limit_stops_checking_linkedin(maker, monkeypatch):
         return httpx.Response(429) if "linkedin" in str(req.url) else handler(req)
 
     async with maker() as s:
-        s.add_all([job(f"https://www.linkedin.com/jobs/view/{i}/", "linkedin", f"linkedin:{i}", user_id=a) for i in (4000002, 4000003)])
+        s.add_all([li_job(4000010 + i, user_id=a) for i in range(5)])
         await s.commit()
     async with maker() as s, client(limited) as c:
         report = await availability.remove_unavailable(s, c, a)
-    assert report["removed"] == 0 and report["linkedin_limited"] and len(calls) == 1
+    # Each refused job: guest API + job page, twice. Stops after MAX_LIMITED jobs in a row.
+    assert report["removed"] == 0 and report["linkedin_limited"] and report["checked"] == 0
+    assert len(calls) == 4 * availability.MAX_LIMITED
+
+
+async def test_linkedin_job_page_used_when_guest_api_refuses(maker, no_waits):
+    """The real case: guest API says 429, the public job page says "Page not found" (404) for a closed job."""
+    a, _ = await _users(maker)
+
+    def guest_limited(req):
+        url = str(req.url)
+        if "jobs-guest" in url:
+            return httpx.Response(429)
+        if url == "https://www.linkedin.com/jobs/view/4000021/":
+            return httpx.Response(404, text="<title>LinkedIn</title> Page not found")
+        if url == "https://www.linkedin.com/jobs/view/4000022/":
+            return httpx.Response(200, text=CLOSED_LI)
+        return httpx.Response(200, text=OPEN_LI)
+
+    async with maker() as s:
+        s.add_all([li_job(4000021, user_id=a, title="deleted"), li_job(4000022, user_id=a, title="closed"),
+                   li_job(4000023, user_id=a, title="open")])
+        await s.commit()
+    async with maker() as s, client(guest_limited) as c:
+        report = await availability.remove_unavailable(s, c, a)
+    assert {j["title"] for j in report["removed_jobs"]} == {"deleted", "closed"}
+    assert report["checked"] == 3 and not report["linkedin_limited"]
+
+
+async def test_linkedin_retries_after_a_pause(maker, no_waits):
+    a, _ = await _users(maker)
+    calls = []
+
+    def first_refused(req):
+        calls.append(str(req.url))
+        return httpx.Response(429) if len(calls) <= 2 else httpx.Response(200, text=CLOSED_LI)
+
+    async with maker() as s:
+        s.add(li_job(4000031, user_id=a))
+        await s.commit()
+    async with maker() as s, client(first_refused) as c:
+        report = await availability.remove_unavailable(s, c, a)
+    assert report["removed"] == 1 and len(calls) == 3
+
+
+async def test_sweep_checks_every_user_a_few_at_a_time(maker, no_waits, monkeypatch):
+    monkeypatch.setattr(availability, "SWEEP_LINKEDIN", 1)
+    a, b = await _users(maker)
+    async with maker() as s:
+        s.add_all([li_job(4000002, user_id=a, title="a closed"), li_job(4000001, user_id=a, title="a open"),
+                   job("https://careers.example.com/closed", user_id=b, title="b closed")])
+        await s.commit()
+    async with client() as c:
+        result = await availability.sweep(maker, c)
+    assert result[a] == {"checked": 1, "removed": 1} and result[b] == {"checked": 1, "removed": 1}
+    async with maker() as s:
+        assert set((await s.scalars(select(Job.title))).all()) == {"a open"}
 
 
 async def test_find_jobs_now_removes_closed_jobs(maker, monkeypatch):

@@ -33,7 +33,7 @@ This document follows each feature from the button you press to the rows saved i
 
 ### Step by step
 1. **Start:** a `collection_runs` row is created for each user. Each user's search settings are loaded, and defaults are created for new users.
-   - **Find jobs now only: remove closed jobs** (`services/availability.py`). Your jobs with status *new* or *saved* are checked, never-checked / longest-ago first (`jobs.checked_at`): Greenhouse / Lever / Ashby through their APIs, LinkedIn through the guest job page ("No longer accepting applications" or 404), other links by HTTP 404/410. Up to 150 non-LinkedIn and 40 LinkedIn links per run (LinkedIn one at a time, 1-2 s apart, stops on 429/999/403). A job is deleted only when the site clearly says it's gone; timeouts, blocks and server errors keep it. Jobs you've applied to (or further) are never removed. The removed jobs are listed under the button (`stats.closed`). The scheduled runs skip this step.
+   - **Find jobs now only: remove closed jobs** (`services/availability.py`). Your jobs with status *new* or *saved* are checked, never-checked / longest-ago first (`jobs.checked_at`): Greenhouse / Lever / Ashby through their APIs, LinkedIn through the guest API and, when that answers "too many requests", the public job page (`/jobs/view/<id>/`): "No longer accepting applications" or 404 "Page not found" means closed. A refused job is tried once more after an 8-15 s pause; LinkedIn is left alone for the run only after 3 jobs in a row stay refused, and refused jobs are first in line next time. Other links: HTTP 404/410. Up to 150 non-LinkedIn and 15 LinkedIn links per click (LinkedIn one at a time, 1-2 s apart). A job is deleted only when the site clearly says it's gone; timeouts, blocks and server errors keep it. Jobs you've applied to (or further) are never removed. The removed jobs are listed under the button (`stats.closed`). The 07:00/15:00 searches skip this step; instead a **background sweep** (`availability.sweep`, worker, minutes :20 and :50) checks 6 LinkedIn + 30 other jobs per user every 30 minutes, so LinkedIn is asked a little at a time.
 2. **Decide which sources to ask:** the sources at least one user has switched on in *Settings → Where to search*.
 3. **Collect postings** (shared by all users, so each source is asked once):
 
@@ -190,5 +190,6 @@ Every 5 minutes for all users (`worker.py`), or **Check now** (`POST /api/gmail/
 | 07:00 and 15:00 | `collect_all`: job search for all users (section 2) | 30 min |
 | every 5 minutes | `gmail_sync_all`: Gmail check for every connected user (section 6) | 4 min |
 | every 5 minutes (:02, :07, …) | `ai_grade_pending`: AI grades for new or changed jobs (section 4); nothing without an API key | 10 min |
+| every 30 minutes (:20, :50) | `remove_closed_all`: removes jobs whose posting closed, a few per user (section 2) | 15 min |
 
 See what they did: `docker compose logs worker --since 1h`.
