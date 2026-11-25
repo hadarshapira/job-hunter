@@ -50,3 +50,66 @@ async def test_import_and_dedup(authed, monkeypatch):
     # Same job, different site
     r3 = (await authed.post("/api/jobs/import", json={"url": "https://www.linkedin.com/jobs/view/123"})).json()
     assert r3["duplicate"] and r3["job"]["id"] == r1["job"]["id"]
+
+
+async def test_company_filter(authed):
+    for title, company in [("DE 1", "Acme"), ("DE 2", "acme "), ("DE 3", "Globex"), ("DE 4", "Northwind"), ("DE 5", "")]:
+        r = await authed.post("/api/jobs", json={"title": title, "company": company})
+        assert r.status_code == 201, r.text
+
+    async def titles(**params):
+        return {j["title"] for j in (await authed.get("/api/jobs", params=params)).json()}
+
+    # Company list: case/space-insensitive, most jobs first, blank company left out
+    companies = (await authed.get("/api/jobs/companies")).json()
+    assert [(c["name"].lower(), c["count"]) for c in companies] == [("acme", 2), ("globex", 1), ("northwind", 1)]
+    assert (await authed.get("/api/company-filter")).json() == {"mode": "", "companies": []}
+
+    # Show only (duplicates removed, spaces trimmed)
+    r = await authed.put("/api/company-filter", json={"mode": "only", "companies": ["ACME", "Acme", " Globex "]})
+    assert r.json() == {"mode": "only", "companies": ["ACME", "Globex"]}
+    assert await titles() == {"DE 1", "DE 2", "DE 3"}
+    assert sum((await authed.get("/api/jobs/sources")).json().values()) == 3
+    # The company list still shows every company, so one can be picked again
+    assert len((await authed.get("/api/jobs/companies")).json()) == 3
+
+    # Hide (jobs without a company stay)
+    await authed.put("/api/company-filter", json={"mode": "hide", "companies": ["acme"]})
+    assert await titles() == {"DE 3", "DE 4", "DE 5"}
+    assert await titles(q="de") == {"DE 3", "DE 4", "DE 5"}
+
+    # Off
+    await authed.put("/api/company-filter", json={"mode": "", "companies": []})
+    assert len(await titles()) == 5
+
+    assert (await authed.put("/api/company-filter", json={"mode": "all", "companies": []})).status_code == 422
+
+
+async def test_company_filter_new_badge(authed, maker):
+    from sqlalchemy import update
+
+    from app.models import Job
+
+    for company in ("Acme", "Globex"):
+        await authed.post("/api/jobs", json={"title": "DE", "company": company})
+    async with maker() as s:
+        await s.execute(update(Job).values(status="new"))
+        await s.commit()
+    assert (await authed.get("/api/stats")).json()["new"] == 2
+    await authed.put("/api/company-filter", json={"mode": "hide", "companies": ["globex"]})
+    assert (await authed.get("/api/stats")).json()["new"] == 1
+
+
+async def test_company_filter_is_per_user(maker):
+    from tests.conftest import new_client, signup
+
+    async with new_client() as a, new_client() as b:
+        await signup(a, "a@example.com")
+        await signup(b, "b@example.com")
+        await a.post("/api/jobs", json={"title": "A job", "company": "Acme"})
+        await b.post("/api/jobs", json={"title": "B job", "company": "Acme"})
+        await a.put("/api/company-filter", json={"mode": "hide", "companies": ["Acme"]})
+        assert (await a.get("/api/jobs")).json() == []
+        assert [j["title"] for j in (await b.get("/api/jobs")).json()] == ["B job"]
+        assert (await b.get("/api/company-filter")).json()["mode"] == ""
+        assert [c["count"] for c in (await b.get("/api/jobs/companies")).json()] == [1]

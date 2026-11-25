@@ -4,14 +4,16 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
 from app.auth import current_user
 from app.db import get_session
-from app.models import Event, Job, Status, User
+from app.models import Event, Job, Status, User, UserSettings
 from app.schemas import (
+    CompanyCount,
+    CompanyFilter,
     ImportRequest,
     ImportResult,
     JobCreate,
@@ -69,6 +71,28 @@ def _filtered(stmt, status: list[Status] | None, q: str | None):
     return stmt
 
 
+def _company_key():
+    """Company name compared without case or surrounding spaces ("Acme " = "acme")."""
+    return func.lower(func.trim(Job.company))
+
+
+async def _company_filter(session: AsyncSession, user: User) -> CompanyFilter:
+    s = await session.get(UserSettings, user.id)
+    if not s or not s.company_filter_mode or not s.company_filter:
+        return CompanyFilter()
+    return CompanyFilter(mode=s.company_filter_mode, companies=s.company_filter)
+
+
+def _by_company(stmt, f: CompanyFilter):
+    """Apply the user's saved company filter (show only / hide those companies)."""
+    keys = [c.strip().lower() for c in f.companies]
+    if f.mode == "only" and keys:
+        stmt = stmt.where(_company_key().in_(keys))
+    elif f.mode == "hide" and keys:
+        stmt = stmt.where(or_(Job.company.is_(None), _company_key().not_in(keys)))
+    return stmt
+
+
 # The list shows cards only: skip the long description and match details, which can be ~5 KB per job
 _SUMMARY_COLUMNS = [getattr(Job, f) for f in JobSummary.model_fields]
 
@@ -86,7 +110,7 @@ async def list_jobs(
     if sort == "match":
         order.insert(0, Job.match_score.desc().nulls_last())
     stmt = select(Job).options(load_only(*_SUMMARY_COLUMNS)).where(Job.user_id == user.id).order_by(*order)
-    stmt = _filtered(stmt, status, q)
+    stmt = _by_company(_filtered(stmt, status, q), await _company_filter(session, user))
     if source:
         stmt = stmt.where(Job.source.in_(source))
     return (await session.scalars(stmt.limit(500))).all()
@@ -101,7 +125,45 @@ async def job_sources(
 ):
     """How many of the user's jobs came from each source (same status/search filters as the list)."""
     stmt = select(Job.source, func.count()).where(Job.user_id == user.id).group_by(Job.source)
-    return dict((await session.execute(_filtered(stmt, status, q))).all())
+    stmt = _by_company(_filtered(stmt, status, q), await _company_filter(session, user))
+    return dict((await session.execute(stmt)).all())
+
+
+@router.get("/jobs/companies", response_model=list[CompanyCount])
+async def job_companies(
+    status: list[Status] | None = Query(None),
+    q: str | None = None,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Companies in the user's jobs with how many jobs each (same status/search filters as the list,
+    but not the company filter, so a hidden company can be picked again). Most jobs first."""
+    key = _company_key()
+    stmt = select(func.min(Job.company), func.count()).where(Job.user_id == user.id, key != "").group_by(key)
+    rows = (await session.execute(_filtered(stmt, status, q))).all()
+    return sorted((CompanyCount(name=n.strip(), count=c) for n, c in rows), key=lambda r: (-r.count, r.name.lower()))
+
+
+@router.get("/company-filter", response_model=CompanyFilter)
+async def get_company_filter(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    return await _company_filter(session, user)
+
+
+@router.put("/company-filter", response_model=CompanyFilter)
+async def put_company_filter(body: CompanyFilter, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    """Save the jobs list company filter. It's kept on the account, so phone and desktop share it."""
+    names: dict[str, str] = {}
+    for c in body.companies:
+        if (name := c.strip()[:200]) and name.lower() not in names:
+            names[name.lower()] = name
+    s = await session.get(UserSettings, user.id)
+    if s is None:
+        s = UserSettings(user_id=user.id)
+        session.add(s)
+    s.company_filter_mode = body.mode
+    s.company_filter = list(names.values())
+    await session.commit()
+    return await _company_filter(session, user)
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)
@@ -254,8 +316,12 @@ async def stats(user: User = Depends(current_user), session: AsyncSession = Depe
     due = await session.scalar(
         select(func.count()).where(mine, Job.follow_up_on.is_not(None), Job.follow_up_on <= date.today())
     ) or 0
+    # The "New for you" badge follows the company filter, like the list it opens
+    new = await session.scalar(_by_company(
+        select(func.count()).select_from(Job).where(mine, Job.status == Status.new), await _company_filter(session, user)
+    )) or 0
     return Stats(
-        new=by_status.get(Status.new, 0),
+        new=new,
         by_status=by_status,
         by_source=by_source,
         applied_total=applied_total,

@@ -136,6 +136,10 @@ export interface CollectStatus {
   } | null
 }
 
+export interface CompanyCount { name: string; count: number }
+/** Jobs list company filter, saved on the account. mode '' = off, 'only' = just these, 'hide' = leave these out */
+export interface CompanyFilter { mode: '' | 'only' | 'hide'; companies: string[] }
+
 export interface Stats {
   new: number
   by_status: Record<string, number>
@@ -232,6 +236,14 @@ export const api = {
     if (params.q) sp.set('q', params.q)
     return req<Record<string, number>>(`/jobs/sources?${sp}`)
   },
+  jobCompanies: (params: { status?: Status[]; q?: string } = {}) => {
+    const sp = new URLSearchParams()
+    params.status?.forEach((s) => sp.append('status', s))
+    if (params.q) sp.set('q', params.q)
+    return req<CompanyCount[]>(`/jobs/companies?${sp}`)
+  },
+  companyFilter: () => req<CompanyFilter>('/company-filter'),
+  saveCompanyFilter: (f: CompanyFilter) => req<CompanyFilter>('/company-filter', { method: 'PUT', body: json(f) }),
   job: (id: number) => req<Job>(`/jobs/${id}`),
   createJob: (body: Partial<Job>) => req<Job>('/jobs', { method: 'POST', body: json(body) }),
   importJob: (url: string) =>

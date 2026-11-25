@@ -140,7 +140,8 @@ Model and effort: `AI_MODEL` (default `claude-sonnet-5-5`) and `AI_EFFORT` (`med
 3. **Applied** records the date applied and sets a **follow-up** for 7 days later. Due follow-ups show as a banner on the Jobs page and in the Tracker.
 4. **Screening / interview / offer / rejected / ghosted / archived** clear the follow-up.
 5. Notes (`POST /api/jobs/{id}/notes`) go into the timeline too. You can also edit contact, notes and the follow-up date on the job.
-6. **Stats** (`GET /api/stats`): count per status and per source, number applied, and response rate = applied jobs that reached screening / interview / offer / rejected.
+6. **Company filter** (Jobs page → **🏢 Companies**): tick companies, then choose **Show only ticked** or **Hide ticked**. Saved on your account right away (`PUT /api/company-filter`, `user_settings.company_filter_mode` / `company_filter`), so it applies on phone and desktop and in every tab. Names match without case or extra spaces ("Acme " = "acme"); jobs with no company are never hidden. It filters the list, the source chips and the *New for you* badge. The company list (`GET /api/jobs/companies`) ignores the filter, so a hidden company can be ticked off again. Jobs from hidden companies are still collected; they're just not shown.
+7. **Stats** (`GET /api/stats`): count per status and per source, number applied, and response rate = applied jobs that reached screening / interview / offer / rejected.
 
 ## 6. Gmail: updating jobs from your email
 

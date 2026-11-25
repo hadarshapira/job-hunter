@@ -121,6 +121,9 @@ class UserSettings(Base):
     ai_grading: Mapped[bool] = mapped_column(Boolean, default=False)  # grade jobs with Claude (costs per job)
     gmail_label_applied: Mapped[str] = mapped_column(String(200), default=DEFAULT_LABEL_APPLIED)
     gmail_label_rejected: Mapped[str] = mapped_column(String(200), default=DEFAULT_LABEL_REJECTED)
+    # Jobs list company filter: "" = off, "only" = show just these companies, "hide" = leave them out
+    company_filter_mode: Mapped[str] = mapped_column(String(10), default="")
+    company_filter: Mapped[list] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

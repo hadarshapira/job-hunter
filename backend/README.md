@@ -14,7 +14,7 @@ app/
 ├── schemas.py           Request/response shapes for the job, auth and stats endpoints
 │
 ├── auth.py              /api/auth/*: sign-up, login, Google sign-in, session cookie, current_user
-├── api.py               /api/jobs*, /api/stats: list, add, import, edit, notes, delete
+├── api.py               /api/jobs*, /api/stats, /api/company-filter: list, add, import, edit, notes, delete, company filter
 ├── api_discovery.py     /api/settings, /api/companies, /api/find-jobs: search settings and "Find jobs now"
 ├── api_profile.py       /api/profile*: CV upload, skills, years; /api/jobs/{id}/match
 ├── api_gmail.py         /api/gmail/*: connect, check now, label names, recent emails, assign, undo, disconnect
