@@ -1,10 +1,16 @@
 """Find jobs whose posting is gone (closed, filled, deleted) and remove them from the user's list.
 
-Runs on "Find jobs now". Only jobs the user hasn't acted on yet are checked (status new or saved):
-applications in progress keep their history even when the posting closes.
+Runs on "Find jobs now", and as a small background sweep every 30 minutes (worker.py) so LinkedIn
+is asked a few jobs at a time instead of many at once. Only jobs the user hasn't acted on yet are
+checked (status new or saved): applications in progress keep their history even when the posting closes.
 
 A job is removed only when the site clearly says it's gone. Anything unclear (timeouts, blocks,
 rate limits, server errors, login walls) keeps the job, so a flaky site never empties the list.
+
+LinkedIn often answers "too many requests" (HTTP 429). Each LinkedIn job is asked through the guest
+API and, if that's refused, through the public job page (a closed job's page is "Page not found",
+HTTP 404, or says "No longer accepting applications"); after a pause it's tried once more. Only
+after several jobs in a row stay refused does the run stop asking LinkedIn.
 """
 
 import asyncio
@@ -21,13 +27,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Event, Job, Status
 from app.services.ats import _ASHBY, _GH, _LEVER
+from app.services.importer import USER_AGENT
 from app.services.sites.linkedin import GUEST_API, linkedin_job_id
 
 log = logging.getLogger("jobhunter.availability")
 CHECK_STATUSES = (Status.new, Status.saved)
-MAX_LINKEDIN = 40   # LinkedIn pages checked per run (slowly); the rest are checked in later runs
+MAX_LINKEDIN = 15   # LinkedIn jobs checked on "Find jobs now" (it searches LinkedIn right after)
 MAX_OTHER = 150     # other links checked per run
+SWEEP_LINKEDIN = 6  # per user in each 30-minute background sweep
+SWEEP_OTHER = 30
 LINKEDIN_DELAY = (1.0, 2.0)
+LIMIT_WAIT = (8.0, 15.0)  # pause after LinkedIn says "too many requests", then try that job once more
+MAX_LIMITED = 3           # stop asking LinkedIn after this many jobs in a row stay refused
+VIEW_URL = "https://www.linkedin.com/jobs/view/{id}/"
 GONE_HTTP = (404, 410)
 _LINKEDIN_CLOSED = re.compile(r"no longer accepting applications|this job is no longer available", re.I)
 
@@ -76,15 +88,27 @@ async def _check_board(client: httpx.AsyncClient, ats: str, board: str, job_id: 
     return Verdict.open if r.status_code == 200 else Verdict.unknown
 
 
-async def _check_linkedin(client: httpx.AsyncClient, job_id: str) -> Verdict:
-    r = await client.get(GUEST_API.format(id=job_id), headers={"Accept-Language": "en-US,en;q=0.9"})
+def _linkedin_verdict(r: httpx.Response) -> Verdict | None:
+    """None = LinkedIn refused (too many requests), so the answer says nothing about the job."""
     if r.status_code in (429, 999, 403):
-        raise LinkedInLimited(f"HTTP {r.status_code}")
+        return None
     if r.status_code in GONE_HTTP:
         return Verdict.gone
     if r.status_code != 200:
         return Verdict.unknown
     return Verdict.gone if _LINKEDIN_CLOSED.search(r.text) else Verdict.open
+
+
+async def _check_linkedin(client: httpx.AsyncClient, job_id: str) -> Verdict:
+    """Guest API first, then the public job page; when both refuse, pause and try once more."""
+    for attempt in range(2):
+        if attempt:
+            await asyncio.sleep(random.uniform(*LIMIT_WAIT))
+        for url in (GUEST_API.format(id=job_id), VIEW_URL.format(id=job_id)):
+            verdict = _linkedin_verdict(await client.get(url, headers={"Accept-Language": "en-US,en;q=0.9"}))
+            if verdict is not None:
+                return verdict
+    raise LinkedInLimited("LinkedIn refused both the guest API and the job page")
 
 
 async def _check_page(client: httpx.AsyncClient, url: str) -> Verdict:
@@ -108,15 +132,18 @@ async def check(client: httpx.AsyncClient, job: Job) -> Verdict:
         return Verdict.unknown
 
 
-async def remove_unavailable(session: AsyncSession, client: httpx.AsyncClient, user_id: int) -> dict:
+async def remove_unavailable(
+    session: AsyncSession, client: httpx.AsyncClient, user_id: int, *,
+    max_linkedin: int = MAX_LINKEDIN, max_other: int = MAX_OTHER,
+) -> dict:
     """Check this user's unhandled jobs and delete the ones whose posting is gone. Returns a small report."""
     jobs = (await session.scalars(
         select(Job)
         .where(Job.user_id == user_id, Job.status.in_(CHECK_STATUSES), Job.url.is_not(None), Job.url != "")
         .order_by(Job.checked_at.is_not(None), Job.checked_at, Job.id)  # never / longest ago checked first
     )).all()
-    linkedin_jobs = [j for j in jobs if not _board_ref(j) and linkedin_job_id(j.url)][:MAX_LINKEDIN]
-    other_jobs = [j for j in jobs if _board_ref(j) or not linkedin_job_id(j.url)][:MAX_OTHER]
+    linkedin_jobs = [j for j in jobs if not _board_ref(j) and linkedin_job_id(j.url)][:max_linkedin]
+    other_jobs = [j for j in jobs if _board_ref(j) or not linkedin_job_id(j.url)][:max_other]
 
     gone: list[Job] = []
     checked = 0
@@ -135,14 +162,18 @@ async def remove_unavailable(session: AsyncSession, client: httpx.AsyncClient, u
     await asyncio.gather(*(one(j) for j in other_jobs))
 
     limited = False
+    refused_in_a_row = 0
     for i, job in enumerate(linkedin_jobs):  # one at a time, spaced out, like the LinkedIn collector
         if i:
             await asyncio.sleep(random.uniform(*LINKEDIN_DELAY))
         try:
             await one(job)
-        except LinkedInLimited:
-            limited = True
-            break
+            refused_in_a_row = 0
+        except LinkedInLimited:  # this job stays unchecked, so it's first in line next time
+            refused_in_a_row += 1
+            if refused_in_a_row >= MAX_LIMITED:
+                limited = True
+                break
 
     if gone:
         ids = [j.id for j in gone]
@@ -156,3 +187,27 @@ async def remove_unavailable(session: AsyncSession, client: httpx.AsyncClient, u
         "removed_jobs": [{"title": j.title, "company": j.company} for j in gone][:50],
         "linkedin_limited": limited,
     }
+
+
+async def sweep(maker, client: httpx.AsyncClient | None = None) -> dict:
+    """Background check for every user, a few jobs at a time (worker, every 30 minutes).
+    Once LinkedIn refuses, the remaining users' LinkedIn jobs wait for the next sweep."""
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+    result: dict[int, dict] = {}
+    linkedin_ok = True
+    try:
+        async with maker() as session:
+            user_ids = (await session.scalars(
+                select(Job.user_id).where(Job.status.in_(CHECK_STATUSES)).distinct()
+            )).all()
+        for uid in user_ids:
+            async with maker() as session:
+                report = await remove_unavailable(
+                    session, client, uid, max_linkedin=SWEEP_LINKEDIN if linkedin_ok else 0, max_other=SWEEP_OTHER)
+            linkedin_ok = linkedin_ok and not report["linkedin_limited"]
+            result[uid] = {k: report[k] for k in ("checked", "removed")}
+    finally:
+        if own:
+            await client.aclose()
+    return result

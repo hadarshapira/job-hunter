@@ -1,6 +1,7 @@
 """Background worker (arq + Redis): scheduled tasks for all users.
 
-Job search at 07:00 and 15:00 Israel time, Gmail every 5 minutes, AI grades every 5 minutes.
+Job search at 07:00 and 15:00 Israel time, Gmail every 5 minutes, AI grades every 5 minutes,
+closed-posting sweep every 30 minutes (a few jobs per user, so LinkedIn isn't asked too much at once).
 JSearch results are cached for 20 hours, so the paid-quota source is effectively queried once
 a day; company boards are fetched both times.
 """
@@ -13,7 +14,7 @@ from arq.connections import RedisSettings
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.services import ai_match, ingest
+from app.services import ai_match, availability, ingest
 from app.services.gmail import sync as gmail_sync
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -21,6 +22,10 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 async def collect_all(ctx) -> dict:
     return await ingest.collect(SessionLocal)
+
+
+async def remove_closed_all(ctx) -> dict:
+    return await availability.sweep(SessionLocal)
 
 
 async def ai_grade_pending(ctx) -> dict:
@@ -40,5 +45,7 @@ class WorkerSettings:
         cron(gmail_sync_all, minute=set(range(0, 60, 5)), timeout=240, unique=True),
         # AI grades for new or changed jobs (does nothing without ANTHROPIC_API_KEY)
         cron(ai_grade_pending, minute=set(range(2, 60, 5)), timeout=600, unique=True),
+        # Remove jobs whose posting closed, a few per user each time (Find jobs now checks more)
+        cron(remove_closed_all, minute={20, 50}, timeout=900, unique=True),
     ]
-    functions = [collect_all, gmail_sync_all, ai_grade_pending]
+    functions = [collect_all, gmail_sync_all, ai_grade_pending, remove_closed_all]
