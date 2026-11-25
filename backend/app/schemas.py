@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl
 
@@ -130,3 +131,15 @@ class Stats(BaseModel):
     responded: int
     response_rate: float
     follow_ups_due: int
+
+
+class CompanyCount(BaseModel):
+    name: str
+    count: int
+
+
+class CompanyFilter(BaseModel):
+    """Jobs list company filter. mode "" = off, "only" = show just these companies, "hide" = leave them out."""
+
+    mode: Literal["", "only", "hide"] = ""
+    companies: list[str] = Field(default_factory=list, max_length=500)

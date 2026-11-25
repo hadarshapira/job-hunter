@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, isDue, SOURCES, sourceLabel, type CollectStatus, type JobSummary, type Status } from '../api'
+import { api, isDue, SOURCES, sourceLabel, type CollectStatus, type CompanyFilter, type JobSummary, type Status } from '../api'
 import { Empty, JobCard, PageTitle } from '../components'
 
 // Stages live in the Tracker; here just: what's new, what I kept, what I dismissed
@@ -143,6 +143,91 @@ function SearchReport({ stats }: { stats: NonNullable<CollectStatus['last_stats'
   )
 }
 
+/** Short label for the company filter button */
+function companyFilterLabel(f: CompanyFilter | undefined) {
+  const n = f?.companies.length ?? 0
+  if (!f?.mode || !n) return 'Companies'
+  const what = n === 1 ? f.companies[0] : `${n} companies`
+  return f.mode === 'only' ? `Only ${what}` : `Hiding ${what}`
+}
+
+/** Pick companies to see only, or to leave out. Saved on the account right away (phone and desktop share it). */
+function CompanyPanel({ statuses, q, onClose }: { statuses?: Status[]; q?: string; onClose: () => void }) {
+  const qc = useQueryClient()
+  const saved = useQuery({ queryKey: ['company-filter'], queryFn: api.companyFilter })
+  const companies = useQuery({
+    queryKey: ['jobs', 'companies', statuses, q],
+    queryFn: () => api.jobCompanies({ status: statuses, q }),
+  })
+  const [find, setFind] = useState('')
+  const save = useMutation({
+    mutationFn: api.saveCompanyFilter,
+    onMutate: (f) => { qc.setQueryData<CompanyFilter>(['company-filter'], f) }, // tick boxes instantly
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['company-filter'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+  const f: CompanyFilter = saved.data ?? { mode: '', companies: [] }
+  // Mode picked before any company is ticked lives here until the first tick saves it
+  const [chosen, setChosen] = useState<'only' | 'hide'>('only')
+  const mode = f.mode || chosen
+  const setMode = (m: 'only' | 'hide') => {
+    setChosen(m)
+    if (f.companies.length) save.mutate({ mode: m, companies: f.companies })
+  }
+  const picked = new Set(f.companies.map((c) => c.toLowerCase()))
+  const toggle = (name: string) => {
+    const key = name.toLowerCase()
+    const next = picked.has(key) ? f.companies.filter((c) => c.toLowerCase() !== key) : [...f.companies, name]
+    save.mutate({ mode: next.length ? mode : '', companies: next })
+  }
+  // Picked companies that have no jobs in this view still appear, so they can be unticked
+  const rows = [
+    ...(companies.data ?? []),
+    ...f.companies.filter((c) => !companies.data?.some((r) => r.name.toLowerCase() === c.toLowerCase())).map((name) => ({ name, count: 0 })),
+  ].filter((r) => r.name.toLowerCase().includes(find.trim().toLowerCase()))
+
+  return (
+    <div className="card mb-4 p-3 text-sm">
+      <div className="mb-2 flex items-center gap-2">
+        <div role="group" aria-label="Company filter mode" className="flex rounded-full border border-line p-0.5 text-xs">
+          {(['only', 'hide'] as const).map((m) => (
+            <button
+              key={m}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+              className={`rounded-full px-3 py-1 ${mode === m ? 'bg-primary text-on-primary' : 'text-muted'}`}
+            >
+              {m === 'only' ? 'Show only ticked' : 'Hide ticked'}
+            </button>
+          ))}
+        </div>
+        {f.companies.length > 0 && (
+          <button className="text-xs text-primary underline" onClick={() => save.mutate({ mode: '', companies: [] })}>Clear</button>
+        )}
+        <button className="ml-auto text-xs text-muted" onClick={onClose} aria-label="Close company filter">Done</button>
+      </div>
+      <input className="input mb-2 py-1.5" placeholder="Find a company…" value={find} onChange={(e) => setFind(e.target.value)} />
+      {companies.isPending && <p className="text-muted">Loading…</p>}
+      {companies.data && rows.length === 0 && <p className="text-muted">No companies here.</p>}
+      <ul className="max-h-72 overflow-y-auto">
+        {rows.map((r) => (
+          <li key={r.name.toLowerCase()}>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 hover:bg-surface-2">
+              <input type="checkbox" checked={picked.has(r.name.toLowerCase())} onChange={() => toggle(r.name)} />
+              <span className="min-w-0 flex-1 truncate">{r.name}</span>
+              <span className="tabular-nums text-xs text-muted">{r.count}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted">Saved to your account, so it applies on your phone and computer, in every tab.</p>
+    </div>
+  )
+}
+
 function NewJobActions({ job }: { job: JobSummary }) {
   const qc = useQueryClient()
   const move = useMutation({
@@ -176,6 +261,9 @@ export default function Jobs() {
     try { localStorage.setItem('jobs-sort', s) } catch { /* private mode */ }
   }
   const [source, setSource] = useState<string | null>(null)
+  const companyFilter = useQuery({ queryKey: ['company-filter'], queryFn: api.companyFilter })
+  const [companiesOpen, setCompaniesOpen] = useState(false)
+  const companyOn = !!companyFilter.data?.mode && companyFilter.data.companies.length > 0
   // Under the 'jobs' key so every place that refreshes the list refreshes the counts too
   const counts = useQuery({
     queryKey: ['jobs', 'sources', active, query],
@@ -206,9 +294,16 @@ export default function Jobs() {
             {i === 0 && stats.data?.new ? <span className="ml-1.5 rounded-full bg-on-primary/20 px-1.5">{stats.data.new}</span> : null}
           </button>
         ))}
+        <button
+          onClick={() => setCompaniesOpen((o) => !o)}
+          aria-expanded={companiesOpen}
+          className={`pill ml-auto max-w-[14rem] truncate border px-3 py-1.5 text-sm ${companyOn ? 'border-primary bg-primary-soft text-primary' : 'border-line'}`}
+        >
+          🏢 {companyFilterLabel(companyFilter.data)}
+        </button>
         <select
           aria-label="Sort jobs"
-          className="ml-auto rounded-full border border-line bg-surface px-3 py-1.5 text-sm"
+          className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm"
           value={sort}
           onChange={(e) => setSort(e.target.value as 'match' | 'recent')}
         >
@@ -216,6 +311,10 @@ export default function Jobs() {
           <option value="recent">Newest first</option>
         </select>
       </div>
+
+      {companiesOpen && active !== null && (
+        <CompanyPanel statuses={FILTERS[active].statuses} q={query || undefined} onClose={() => setCompaniesOpen(false)} />
+      )}
 
       {counts.data && Object.keys(counts.data).length > 0 && (
         <div className="-mt-2 mb-4 flex gap-2 overflow-x-auto pb-1 text-xs">
@@ -257,7 +356,13 @@ export default function Jobs() {
 
       {(jobs.isPending || active === null) && <Empty>Loading…</Empty>}
       {jobs.isError && <Empty>Error: {jobs.error.message}</Empty>}
-      {jobs.data?.length === 0 && (
+      {jobs.data?.length === 0 && companyOn && (
+        <Empty>
+          No jobs here with the company filter ({companyFilterLabel(companyFilter.data)}).{' '}
+          <button className="text-primary underline" onClick={() => setCompaniesOpen(true)}>Change it</button>
+        </Empty>
+      )}
+      {jobs.data?.length === 0 && !companyOn && (
         <Empty>
           {isNew ? (
             <>No new jobs right now. Tune your search in <Link to="/settings" className="text-primary underline">Settings</Link>, or search now.</>
