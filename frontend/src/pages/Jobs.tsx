@@ -59,9 +59,10 @@ export function FindJobsButton() {
         )}
       </div>
       {start.isError && <p className="text-sm text-danger">{start.error.message}</p>}
-      {running && <p className="text-xs text-muted">Checking LinkedIn, company career pages and the web. LinkedIn is read slowly to avoid being blocked, so this can take a few minutes.</p>}
+      {running && <p className="text-xs text-muted">First checks that the jobs in your list are still open, then searches LinkedIn, company career pages and the web. LinkedIn is read slowly to avoid being blocked, so this can take a few minutes.</p>}
       {s && !s.jsearch_enabled && <p className="text-xs text-muted">Web search (JSearch) is off; only company career pages are searched.</p>}
       {s?.jsearch_quota_left != null && <p className="text-xs text-muted">Web searches left this month (shared): {s.jsearch_quota_left}</p>}
+      {!running && s?.last_stats?.closed && <ClosedReport closed={s.last_stats.closed} />}
       {!running && s?.last_stats && <SearchReport stats={s.last_stats} />}
       {!running && s?.last_errors.length ? (
         <details className="text-xs text-warn">
@@ -70,6 +71,24 @@ export function FindJobsButton() {
         </details>
       ) : null}
     </div>
+  )
+}
+
+/** Jobs removed from the list because their posting is closed */
+function ClosedReport({ closed }: { closed: NonNullable<NonNullable<CollectStatus['last_stats']>['closed']> }) {
+  if (!closed.removed) {
+    return closed.checked ? <p className="text-xs text-muted">Checked {closed.checked} jobs in your list: all still open.</p> : null
+  }
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted">
+        Removed {closed.removed} closed job{closed.removed === 1 ? '' : 's'} (checked {closed.checked})
+      </summary>
+      <ul className="mt-1 list-inside list-disc text-muted">
+        {closed.removed_jobs.map((j, i) => <li key={i}>{j.title}{j.company ? ` · ${j.company}` : ''}</li>)}
+      </ul>
+      {closed.linkedin_limited && <p className="mt-1 text-muted">LinkedIn asked to slow down; the rest will be checked next time.</p>}
+    </details>
   )
 }
 

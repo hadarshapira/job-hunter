@@ -33,6 +33,7 @@ This document follows each feature from the button you press to the rows saved i
 
 ### Step by step
 1. **Start:** a `collection_runs` row is created for each user. Each user's search settings are loaded, and defaults are created for new users.
+   - **Find jobs now only: remove closed jobs** (`services/availability.py`). Your jobs with status *new* or *saved* are checked, never-checked / longest-ago first (`jobs.checked_at`): Greenhouse / Lever / Ashby through their APIs, LinkedIn through the guest job page ("No longer accepting applications" or 404), other links by HTTP 404/410. Up to 150 non-LinkedIn and 40 LinkedIn links per run (LinkedIn one at a time, 1-2 s apart, stops on 429/999/403). A job is deleted only when the site clearly says it's gone; timeouts, blocks and server errors keep it. Jobs you've applied to (or further) are never removed. The removed jobs are listed under the button (`stats.closed`). The scheduled runs skip this step.
 2. **Decide which sources to ask:** the sources at least one user has switched on in *Settings → Where to search*.
 3. **Collect postings** (shared by all users, so each source is asked once):
 

@@ -67,6 +67,8 @@ class Job(Base):
     lat: Mapped[float | None] = mapped_column(Float)
     lon: Mapped[float | None] = mapped_column(Float)
     distance_km: Mapped[float | None] = mapped_column(Float)
+    # Last time the posting was checked to still be up (services/availability.py)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Match against the user's profile (None = no profile yet)
     match_score: Mapped[int | None] = mapped_column(Integer, index=True)
